@@ -382,12 +382,20 @@ def main(argv: list[str]) -> int:
 
     if a.synth:
         stream = build_synth()
+        name = "SYNTH"
     elif a.infile:
         stream = build_from_file(a.infile, a.ticker, a.limit)
+        name = a.ticker.upper()
     else:
         ap.error("give a file or --synth")
 
     write_outputs(stream, a.out_hex, a.out_bin, a.out_exp, a.out_ev)
+    # single-entry tickers.txt so tools/viz.py labels the one line and shows
+    # exactly one book (overwrites any stale 4-ticker file)
+    _, final, _ = replay(stream)
+    d = os.path.dirname(a.out_hex) or "."
+    with open(os.path.join(d, "tickers.txt"), "w") as f:
+        f.write(f"0 {name} {final}\n")
     return 0
 
 
