@@ -124,7 +124,17 @@ make flash-demo
 python3 tools/viz.py
 ```
 
+**One book + three physical 7-segment displays** (`-DSSEG3`, `sseg12.v` + `disp3.v`):
+`make flash-demo3` drives three CL5641BH (common anode) showing **ticker name /
+best bid `DDD.D` / resting order count**. Wire per `tangnano20k.cst`: 8 shared
+segment lines (220 Ω each) + 12 digit-selects, each through a PNP high-side
+switch (1 kΩ base) to 3.3 V. The `dbg[]` logic-analyzer taps are dropped in this
+build (the count digits reuse those pins). Renders cleanly for tickers whose
+letters exist on 7-seg (AAPL yes; MSFT/NVDA/AMD have M/V that don't).
+
 `make flash-perm` restores the normal full-speed one-shot build.
+The `-DANIMATE` builds use `book_scan` (the CAM book misses 27 MHz once the
+telemetry logic is added); `make synth` / `flash-perm` keep the CAM book.
 
 ## Reading it on the computer
 
