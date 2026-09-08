@@ -15,6 +15,11 @@ data/*.vh
 oss-cad-suite/
 *.tgz
 
+# raw ITCH capture files (huge, not redistributable)
+*.NASDAQ_ITCH50
+*_ITCH50
+*.NASDAQ_ITCH50.gz
+
 # python
 __pycache__/
 *.pyc

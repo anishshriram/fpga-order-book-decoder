@@ -58,14 +58,18 @@ resolve paths against the working directory.
   (16-bit truncated order ids, bid side only, `A`/`D`/`E`, slot-array book).
   Also runnable: `python3 tools/reference_book.py data/feed.bin`.
 - `tools/itch_to_hex.py` — feed generator.
-  - `--synth` emits a deterministic sequence with a known best-bid trajectory
-    (this is what the testbenches use).
-  - `tools/itch_to_hex.py <file.gz> --ticker AAPL` filters a real NASDAQ ITCH 5.0
-    file (2-byte big-endian length prefix per message) to one ticker's `A`/`D`/`E`
-    messages. Historical sample files are on the NASDAQ / LSE data portals; the
-    multi-GB download is optional — the synthetic feed covers CI. The feed must
-    fit `ROM_DEPTH` (32768 bytes); shorten the slice or raise it in both
-    `itch_to_hex.py` and `rom.v` if needed.
+  - `--synth` emits a deterministic sequence with a known best-bid trajectory.
+  - `tools/itch_to_hex.py <file> --ticker AAPL --limit 800` filters a real
+    NASDAQ ITCH 5.0 file (BinaryFILE framing: 2-byte big-endian length prefix
+    per message; `.gz` auto-decompressed) to one ticker's first `--limit`
+    `A`/`D`/`E` messages. It reads type + stock-locate from fixed offsets and
+    stops early, so a liquid ticker is seconds even on a 10 GB file. The slice
+    must fit `ROM_DEPTH` (32768 bytes) — raise it here and in `rom.v` for a
+    bigger window. Sample files: the NASDAQ historical ITCH archive
+    (`emi.nasdaq.com`), no account, ~5 GB gz.
+  - `make feed` → synthetic feed. `make feed-real ITCH=<file> [TICKER=AAPL]
+    [LIMIT=800]` → real slice (survives a later `make sim`, which only
+    regenerates the synthetic feed if it is missing).
 
 Outputs: `feed.hex` ($readmemh, padded to ROM depth), `feed.bin` (raw, for the
 model), `events.txt` (decoded events + expected best bid, for `tb_book`),

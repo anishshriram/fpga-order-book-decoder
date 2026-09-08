@@ -1,6 +1,7 @@
 # ITCH-to-Book FPGA -- build / sim / synth / flash
 #
-#   make feed     regenerate data/*.{hex,bin,txt} from the synthetic ITCH feed
+#   make feed     regenerate data/* from the synthetic ITCH feed
+#   make feed-real ITCH=<file> [TICKER=AAPL] [LIMIT=800]   real ITCH slice
 #   make sim      compile + run every self-checking testbench (fails on any FAIL)
 #   make wave TB=tb_book    run one testbench with waveform dump, open GTKWave
 #   make synth    yosys -> nextpnr-himbaechel -> gowin_pack  => build/top.fs
@@ -28,13 +29,18 @@ FAMILY := GW2A-18C
 GWDEV  := GW2A-18C
 
 # ---------------------------------------------------------------------------
-.PHONY: sim feed wave synth blink flash flash-blink clean $(addprefix run-,$(TBS))
+.PHONY: sim feed feed-real wave synth blink flash flash-blink clean \
+        $(addprefix run-,$(TBS))
 
+# `make sim` always runs the deterministic synthetic feed. To exercise the
+# testbenches against a real slice instead: `make feed-real ITCH=...` then
+# `make run-tb_top` (or run-tb_book) directly -- those use whatever feed is
+# currently in data/.
 sim: feed $(addprefix run-,$(TBS))
 	@echo "-----------------------------------"
 	@echo "all testbenches passed"
 
-$(addprefix run-,$(TBS)): run-%: %.v $(SRCS) | $(BUILD)
+$(addprefix run-,$(TBS)): run-%: %.v $(SRCS) data/feed.vh | $(BUILD)
 	@echo "== $* =="
 	@$(IVERILOG) -s $* -o $(BUILD)/$* $*.v $(SRCS)
 	@$(VVP) $(BUILD)/$* | tee $(BUILD)/$*.log
@@ -42,11 +48,20 @@ $(addprefix run-,$(TBS)): run-%: %.v $(SRCS) | $(BUILD)
 		|| { echo ">>> $* FAILED"; exit 1; }
 
 # ---------------------------------------------------------------------------
-feed: | $(BUILD)
+feed: | $(BUILD)                        # always regenerate the synthetic feed
 	python3 tools/itch_to_hex.py --synth
 
+data/feed.vh: | $(BUILD)                # bootstrap a feed only if none exists
+	python3 tools/itch_to_hex.py --synth
+
+# real slice: ITCH=<file> [TICKER=AAPL] [LIMIT=800]
+feed-real: | $(BUILD)
+	@test -n "$(ITCH)" || { echo "usage: make feed-real ITCH=<file> [TICKER=AAPL] [LIMIT=800]"; exit 1; }
+	python3 tools/itch_to_hex.py "$(ITCH)" \
+	    --ticker "$(or $(TICKER),AAPL)" --limit "$(or $(LIMIT),800)"
+
 # ---------------------------------------------------------------------------
-wave: feed | $(BUILD)
+wave: data/feed.vh | $(BUILD)
 	@test -n "$(TB)" || { echo "usage: make wave TB=tb_book"; exit 1; }
 	$(IVERILOG) -DDUMP -s $(TB) -o $(BUILD)/$(TB)_w $(TB).v $(SRCS)
 	$(VVP) $(BUILD)/$(TB)_w
@@ -56,7 +71,9 @@ wave: feed | $(BUILD)
 synth: $(BUILD)/top.fs
 blink: $(BUILD)/blink.fs
 
-$(BUILD)/%.fs: %.v $(RTL) tangnano20k.cst feed | $(BUILD)
+# synth/flash bake whatever feed is in data/ into the ROM -- choose it with
+# `make feed` (synthetic) or `make feed-real ITCH=...` first.
+$(BUILD)/%.fs: %.v $(RTL) tangnano20k.cst data/feed.vh | $(BUILD)
 	yosys -p "read_verilog $(if $(filter blink,$*),blink.v,$(RTL)); \
 	          synth_gowin -top $* -json $(BUILD)/$*.json"
 	nextpnr-himbaechel --json $(BUILD)/$*.json --write $(BUILD)/$*_pnr.json \

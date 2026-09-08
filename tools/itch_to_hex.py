@@ -145,45 +145,73 @@ def _open(path: str):
     return open(path, "rb")
 
 
-def iter_framed(f):
-    """Yield whole messages from BinaryFILE framing (2-byte BE length prefix)."""
-    while True:
-        hdr = f.read(2)
-        if len(hdr) < 2:
-            return
-        (n,) = struct.unpack(">H", hdr)
-        msg = f.read(n)
-        if len(msg) < n:
-            return
-        yield msg
+def build_from_file(path: str, ticker: str, limit: int | None,
+                    chunk: int = 1 << 24) -> bytes:
+    """Scan a BinaryFILE-framed ITCH 5.0 stream (2-byte BE length prefix).
 
-
-def build_from_file(path: str, ticker: str) -> bytes:
+    Reads the type byte and stock-locate from fixed offsets without copying
+    every message -- only messages we actually keep are materialized. Stops as
+    soon as `limit` kept messages are reached (for a liquid ticker that is
+    early in the file)."""
     want = ticker.encode().ljust(8)[:8]
+    A, D, E, R = ord("A"), ord("D"), ord("E"), ord("R")
+    keep_types = frozenset((A, D, E))
     target_locate = None
     keep = bytearray()
     kept = 0
+
+    buf = b""
+    base = 0            # file offset of buf[0]
+    pos = 0
+    next_mark = 1 << 30
+
     with _open(path) as f:
-        for msg in iter_framed(f):
-            if not msg:
+        while True:
+            if len(buf) - pos < 2:
+                buf = buf[pos:]
+                base += pos
+                pos = 0
+                more = f.read(chunk)
+                if not more:
+                    break
+                buf += more
                 continue
-            t = msg[0]
-            if t == ord("R") and len(msg) >= 19:
-                if msg[11:19] == want:
-                    target_locate = struct.unpack(">H", msg[1:3])[0]
+            n = (buf[pos] << 8) | buf[pos + 1]
+            end = pos + 2 + n
+            if end > len(buf):
+                buf = buf[pos:]
+                base += pos
+                pos = 0
+                more = f.read(chunk)
+                if not more:
+                    break
+                buf += more
                 continue
-            if target_locate is None:
-                continue
-            if t in (ord("A"), ord("D"), ord("E")):
-                if struct.unpack(">H", msg[1:3])[0] == target_locate:
-                    exp = MSG_LEN[t]
-                    if len(msg) == exp:
-                        keep += msg
-                        kept += 1
+
+            t = buf[pos + 2]
+            if t == R:
+                if n >= 18 and bytes(buf[pos + 13:pos + 21]) == want:
+                    target_locate = (buf[pos + 3] << 8) | buf[pos + 4]
+            elif target_locate is not None and t in keep_types:
+                if ((buf[pos + 3] << 8) | buf[pos + 4]) == target_locate \
+                        and n == MSG_LEN[t]:
+                    keep += buf[pos + 2:end]
+                    kept += 1
+                    if (limit is not None and kept >= limit) \
+                            or len(keep) > ROM_DEPTH:
+                        pos = end
+                        break
+            pos = end
+
+            if base + pos >= next_mark:
+                print(f"  ... scanned {(base + pos) >> 30} GiB, kept {kept}",
+                      file=sys.stderr, flush=True)
+                next_mark += 1 << 30
+
     if target_locate is None:
         sys.exit(f"ticker {ticker!r} not found in stock directory messages")
-    print(f"ticker {ticker} -> stock_locate {target_locate}, {kept} A/D/E messages",
-          file=sys.stderr)
+    print(f"ticker {ticker} -> stock_locate {target_locate}, kept {kept} "
+          f"A/D/E messages ({len(keep)} bytes)", file=sys.stderr, flush=True)
     return bytes(keep)
 
 
@@ -237,6 +265,9 @@ def main(argv: list[str]) -> int:
     ap.add_argument("infile", nargs="?", help="real ITCH 5.0 file (.gz ok)")
     ap.add_argument("--synth", action="store_true", help="emit the built-in feed")
     ap.add_argument("--ticker", default="AAPL", help="ticker to keep (real file mode)")
+    ap.add_argument("--limit", type=int, default=800,
+                    help="max A/D/E messages to keep from a real file "
+                         "(must fit ROM_DEPTH=%d bytes; default 800)" % ROM_DEPTH)
     ap.add_argument("--out-hex", default="data/feed.hex")
     ap.add_argument("--out-bin", default="data/feed.bin")
     ap.add_argument("--out-exp", default="data/expected.txt")
@@ -246,7 +277,7 @@ def main(argv: list[str]) -> int:
     if a.synth:
         stream = build_synth()
     elif a.infile:
-        stream = build_from_file(a.infile, a.ticker)
+        stream = build_from_file(a.infile, a.ticker, a.limit)
     else:
         ap.error("give a file or --synth")
 
