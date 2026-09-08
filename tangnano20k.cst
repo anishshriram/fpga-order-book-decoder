@@ -52,14 +52,33 @@ IO_PORT "seg[6]" IO_TYPE=LVCMOS33 DRIVE=8;
 IO_PORT "seg[7]" IO_TYPE=LVCMOS33 DRIVE=8;
 
 // ---- 7-segment: digit anode enables (through high-side switches) ----
+// dig[0..3]  = display 1 digits 1..4    (single-book: the only display)
+// dig[4..7]  = display 2 digits 1..4    (-DSSEG3 only)
+// dig[8..11] = display 3 digits 1..4    (-DSSEG3 only; shares pins with dbg[])
 IO_LOC  "dig[0]" 49;    // J5 pin 13
 IO_LOC  "dig[1]" 86;    // J5 pin 14
 IO_LOC  "dig[2]" 72;    // J5 pin 18
 IO_LOC  "dig[3]" 71;    // J5 pin 19
+IO_LOC  "dig[4]" 73;
+IO_LOC  "dig[5]" 74;
+IO_LOC  "dig[6]" 76;
+IO_LOC  "dig[7]" 77;
+IO_LOC  "dig[8]"  27;
+IO_LOC  "dig[9]"  28;
+IO_LOC  "dig[10]" 29;
+IO_LOC  "dig[11]" 30;
 IO_PORT "dig[0]" IO_TYPE=LVCMOS33 DRIVE=8;
 IO_PORT "dig[1]" IO_TYPE=LVCMOS33 DRIVE=8;
 IO_PORT "dig[2]" IO_TYPE=LVCMOS33 DRIVE=8;
 IO_PORT "dig[3]" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_PORT "dig[4]" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_PORT "dig[5]" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_PORT "dig[6]" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_PORT "dig[7]" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_PORT "dig[8]"  IO_TYPE=LVCMOS33 DRIVE=8;
+IO_PORT "dig[9]"  IO_TYPE=LVCMOS33 DRIVE=8;
+IO_PORT "dig[10]" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_PORT "dig[11]" IO_TYPE=LVCMOS33 DRIVE=8;
 
 // ---- UART readout: FPGA TX -> onboard FT2232 channel B -> host ----
 // Appears on the host as the second /dev/cu.usbserial-* port. No wiring.

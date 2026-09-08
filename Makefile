@@ -29,11 +29,11 @@ VVP      := vvp
 BUILD    := build
 
 # integration RTL (order matters only for readability; iverilog resolves refs)
-RTL       := parser.v book.v book_scan.v bin2bcd.v display.v uart_tx.v readout.v rom.v top.v
+RTL       := parser.v book.v book_scan.v bin2bcd.v display.v sseg12.v disp3.v uart_tx.v readout.v rom.v top.v
 MULTI_RTL := parser.v book_scan.v bin2bcd.v uart_tx.v readout.v rom.v multitop.v
 
 # every testbench; each is compiled against all non-tb sources
-TBS  := tb_parser tb_book tb_book_equiv tb_display tb_blink tb_uart tb_top
+TBS  := tb_parser tb_book tb_book_equiv tb_display tb_disp3 tb_blink tb_uart tb_top
 SRCS := $(filter-out tb_%,$(wildcard *.v))
 
 DEVICE := GW2AR-LV18QN88C8/I7
@@ -42,8 +42,8 @@ GWDEV  := GW2A-18C
 
 # ---------------------------------------------------------------------------
 .PHONY: sim sim-anim sim-multi feed feed-real feed-multi wave synth blink \
-        flash flash-perm flash-loop flash-demo flash-multi flash-blink clean \
-        $(addprefix run-,$(TBS))
+        flash flash-perm flash-loop flash-demo flash-demo3 flash-multi \
+        flash-blink clean $(addprefix run-,$(TBS))
 
 # `make sim` always runs the deterministic synthetic feed. To exercise the
 # testbenches against a real slice instead: `make feed-real ITCH=...` then
@@ -138,6 +138,11 @@ flash-loop:                       # replay variant -> SPI flash
 flash-demo:                       # animation variant -> SPI flash (for tools/viz.py)
 	rm -f $(BUILD)/top.fs $(BUILD)/top.json
 	$(MAKE) VDEFS=-DANIMATE $(BUILD)/top.fs
+	$(OFL) -b tangnano20k -f $(BUILD)/top.fs
+	rm -f $(BUILD)/top.fs $(BUILD)/top.json
+flash-demo3:                      # animation + 3 CL5641BH displays -> SPI flash
+	rm -f $(BUILD)/top.fs $(BUILD)/top.json
+	$(MAKE) VDEFS="-DANIMATE -DSSEG3" $(BUILD)/top.fs
 	$(OFL) -b tangnano20k -f $(BUILD)/top.fs
 	rm -f $(BUILD)/top.fs $(BUILD)/top.json
 flash-blink: $(BUILD)/blink.fs
