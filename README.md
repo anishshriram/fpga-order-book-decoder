@@ -12,7 +12,7 @@ it is authoritative.
 | 0 | Toolchain (oss-cad-suite) | done | — |
 | 1 | LED blink bring-up | `tb_blink` pass | **PASS** (all 6 blink) |
 | 2 | Parser (`A`/`D`/`E`) | `tb_parser` pass | runs in `top` |
-| 3 | Order book + best bid | `tb_book` pass | runs in `top` |
+| 3 | Order book (CAM, ~4-cycle ops) | `tb_book`, `tb_book_equiv` pass | runs in `top` |
 | 4 | 7-seg display + double-dabble | `tb_display` pass | not wired |
 | 5 | ROM → parser → book → display | `tb_top`, `tb_uart` pass | **PASS** (LEDs + UART) |
 
@@ -85,10 +85,14 @@ model), `events.txt` (decoded events + expected best bid, for `tb_book`),
   message type it does not decode; a type absent from the LUT is skipped one
   byte at a time to resync. Sell-side Adds (`buy/sell == 'S'`) are counted past
   with no event emitted.
-- **Book** keeps `valid` bits in flip-flops and `{id, price, shares}` in BSRAM
-  (1-cycle read). Every lookup is a linear scan sub-FSM; a delete/execute that
-  removes the best price triggers a full rescan for the new maximum. Slow,
-  correct.
+- **Book** (`book.v`): the 256 order ids live in flip-flops as a CAM, matched
+  in parallel, so Delete/Execute find their slot in 1 clock (fixed ~4 clocks
+  total) instead of scanning. A running count of orders at the best price means
+  the O(n) rescan only fires when the top price level fully clears. `{price,
+  shares}` stay in BSRAM. Synth: 45% LUT4, 33% FF, closes at 27 MHz.
+- **`book_scan.v`**: the original linear-scan book (BSRAM payload, O(n) every
+  op, up to ~1500 clocks for a delete that empties the top of book). Kept for
+  `tb_book_equiv`, which asserts the two are bit-identical every event.
 - **Display** (7-seg) shows the low 16 bits of `best_bid` in hex. `bin2bcd.v`
   (double-dabble) is built and tested but not wired into the 7-seg path.
 - **UART readout** (`readout.v` + `uart_tx.v`): ~10×/s `top` converts `best_bid`
