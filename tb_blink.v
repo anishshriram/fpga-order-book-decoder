@@ -37,9 +37,9 @@ module tb_blink;
         rst_n = 1'b1;
         @(negedge clk);
 
-        chk("upper 5 LEDs off (high)", led[5:1] == 5'b11111);
+        chk("all 6 LEDs move together", led === {6{led[0]}});
 
-        // BIT=2 -> led[0] flips every 4 clocks. Count edges over 32 clocks:
+        // BIT=2 -> led flips every 4 clocks. Count edges over 32 clocks:
         // expect 8 toggles.
         toggles = 0;
         prev = led[0];
@@ -47,8 +47,12 @@ module tb_blink;
             @(negedge clk);
             if (led[0] !== prev) toggles = toggles + 1;
             prev = led[0];
+            if (led !== {6{led[0]}}) begin
+                errors = errors + 1;
+                $display("FAIL  LEDs diverged: %b", led);
+            end
         end
-        chk("led[0] toggled ~8x in 32 clk", toggles >= 7 && toggles <= 9);
+        chk("led toggled ~8x in 32 clk", toggles >= 7 && toggles <= 9);
 
         repeat (2) @(negedge clk);
         $display("----");
