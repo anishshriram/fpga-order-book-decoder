@@ -52,10 +52,10 @@ module multitop (
     wire frst = rst | (rstate == R_RST);
 
     // ---- ROM + paced feeder -----------------------------------------
-    localparam AW = 16;
+    localparam AW = 15;
     reg  [AW-1:0] addr;
     wire [7:0]    rom_data;
-    rom #(.FILE("data/feed.hex"), .DEPTH(65536), .AW(AW)) u_rom (
+    rom #(.FILE("data/feed.hex"), .DEPTH(32768), .AW(AW)) u_rom (
         .clk(clk), .addr(addr), .data(rom_data)
     );
 

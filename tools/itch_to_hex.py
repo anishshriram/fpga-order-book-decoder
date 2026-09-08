@@ -264,7 +264,8 @@ def build_multi(path: str, tickers: list[str], limit: int,
 # ---------------------------------------------------------------------------
 TYPE_CODE = {'A': 0x41, 'D': 0x44, 'E': 0x45}
 ROM_DEPTH = 32768         # single-ticker: rom.v DEPTH / top.v
-MULTI_ROM_DEPTH = 65536   # 4-ticker interleaved feed: multitop.v
+MULTI_ROM_DEPTH = 32768   # 4-ticker interleaved feed: multitop.v (32K flash-boots
+                          # reliably on the Tang Nano 20K; 64K did not)
 
 
 def write_outputs(stream: bytes, hex_path: str, bin_path: str, exp_path: str,

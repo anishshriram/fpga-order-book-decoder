@@ -88,7 +88,7 @@ feed-real: | $(BUILD)
 # 4-ticker interleaved feed for multitop / tools/viz.py
 # ITCH=<file> [TICKERS=AMD,MSFT,AAPL,NVDA] [LIMIT=400]
 TICKERS   ?= AMD,MSFT,AAPL,NVDA
-MULTILIMIT ?= 400
+MULTILIMIT ?= 250
 feed-multi: | $(BUILD)
 	@test -n "$(ITCH)" || { echo "usage: make feed-multi ITCH=<file> [TICKERS=A,B,C,D] [MULTILIMIT=400]"; exit 1; }
 	python3 tools/itch_to_hex.py "$(ITCH)" --tickers "$(TICKERS)" --limit "$(MULTILIMIT)"
