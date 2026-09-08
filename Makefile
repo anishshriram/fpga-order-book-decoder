@@ -27,7 +27,7 @@ BUILD    := build
 RTL := parser.v book.v bin2bcd.v display.v uart_tx.v readout.v rom.v top.v
 
 # every testbench; each is compiled against all non-tb sources
-TBS  := tb_parser tb_book tb_display tb_blink tb_uart tb_top
+TBS  := tb_parser tb_book tb_book_equiv tb_display tb_blink tb_uart tb_top
 SRCS := $(filter-out tb_%,$(wildcard *.v))
 
 DEVICE := GW2AR-LV18QN88C8/I7

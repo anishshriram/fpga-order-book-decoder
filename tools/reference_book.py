@@ -36,7 +36,7 @@ MSG_LEN = {
     ord('I'): 50,   ord('N'): 20,   ord('O'): 48,
 }
 
-CAPACITY = 256
+CAPACITY = 256   # matches book.v / book_scan.v slot count
 
 BUY = ord('B')
 SELL = ord('S')
