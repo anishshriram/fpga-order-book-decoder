@@ -1,0 +1,258 @@
+#!/usr/bin/env python3
+"""Turn an ITCH slice into a byte feed for the FPGA.
+
+Two modes:
+
+  --synth
+      Emit a deterministic, hand-checked sequence of A/D/E messages (plus one
+      unknown type and one sell-side Add) with a known best-bid trajectory.
+      No external data needed. This is what the testbenches use.
+
+  <file>
+      Read a real NASDAQ ITCH 5.0 file (BinaryFILE framing: each message is
+      preceded by a 2-byte big-endian length; .gz is auto-decompressed).
+      Resolve the stock locate for --ticker from the 'R' directory messages,
+      then emit every A/D/E message for that locate, length-prefix stripped.
+
+Outputs (paths are relative to the current working directory):
+  --out-hex   one "%02x" byte per line, for $readmemh   (default data/feed.hex)
+  --out-bin   the same bytes, raw                        (default data/feed.bin)
+  --out-exp   best_bid after every accepted event + final (default data/expected.txt)
+  --out-ev    decoded events "TYPE id price shares", one per line, for tb_book
+              (default data/events.txt)
+
+The expected file is produced by tools/reference_book.py so sim and model can
+never drift.
+"""
+
+from __future__ import annotations
+
+import argparse
+import gzip
+import os
+import struct
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from reference_book import MSG_LEN, replay  # noqa: E402
+
+
+# ---------------------------------------------------------------------------
+# message builders (big-endian, offsets exactly per SPEC.md)
+# ---------------------------------------------------------------------------
+def add_order(ref: int, side: bytes, shares: int, price: int,
+              locate: int = 1, ticker: bytes = b"TEST    ") -> bytes:
+    assert side in (b"B", b"S")
+    m = bytearray(36)
+    m[0:1] = b"A"
+    struct.pack_into(">H", m, 1, locate)          # stock locate
+    struct.pack_into(">H", m, 3, 0)               # tracking number
+    m[5:11] = (0).to_bytes(6, "big")              # timestamp
+    struct.pack_into(">Q", m, 11, ref)            # order reference number
+    m[19:20] = side                               # buy/sell
+    struct.pack_into(">I", m, 20, shares)         # shares
+    m[24:32] = ticker[:8].ljust(8)                # stock
+    struct.pack_into(">I", m, 32, price)          # price
+    return bytes(m)
+
+
+def delete_order(ref: int, locate: int = 1) -> bytes:
+    m = bytearray(19)
+    m[0:1] = b"D"
+    struct.pack_into(">H", m, 1, locate)
+    struct.pack_into(">H", m, 3, 0)
+    m[5:11] = (0).to_bytes(6, "big")
+    struct.pack_into(">Q", m, 11, ref)
+    return bytes(m)
+
+
+def order_executed(ref: int, exec_shares: int, match: int = 0,
+                   locate: int = 1) -> bytes:
+    m = bytearray(31)
+    m[0:1] = b"E"
+    struct.pack_into(">H", m, 1, locate)
+    struct.pack_into(">H", m, 3, 0)
+    m[5:11] = (0).to_bytes(6, "big")
+    struct.pack_into(">Q", m, 11, ref)
+    struct.pack_into(">I", m, 19, exec_shares)
+    struct.pack_into(">Q", m, 23, match)
+    return bytes(m)
+
+
+def system_event(code: bytes = b"O") -> bytes:
+    """'S' System Event, 12 bytes. Book must count past and ignore it."""
+    m = bytearray(12)
+    m[0:1] = b"S"
+    struct.pack_into(">H", m, 1, 0)
+    struct.pack_into(">H", m, 3, 0)
+    m[5:11] = (0).to_bytes(6, "big")
+    m[11:12] = code
+    return bytes(m)
+
+
+# ---------------------------------------------------------------------------
+# synthetic feed
+# ---------------------------------------------------------------------------
+def build_synth() -> bytes:
+    """Trajectory (dollars are price/10000):
+
+      1  A buy  ref=1      100.2000  x100   -> best 1002000
+      2  A buy  ref=2      150.2500  x50    -> best 1502500
+      3  A buy  ref=3      130.0000  x200   -> best 1502500
+      4  S system event                     -> best 1502500 (skipped)
+      5  A SELL ref=4      999.9999  x10     -> best 1502500 (dropped, side S)
+      6  E ref=2 exec 50   -> ref2 empties  -> best 1300000 (rescan)
+      7  D ref=3           -> ref3 removed   -> best 1002000 (rescan)
+      8  E ref=1 exec 40   -> ref1 has 60    -> best 1002000
+      9  D ref=1           -> book empty      -> best 0
+     10  A buy  ref=5      123.4567  x5      -> best 1234567
+     11  A buy  ref=6      123.4567  x8      -> best 1234567 (duplicate best price)
+     12  D ref=5           -> ref6 remains   -> best 1234567 (rescan finds the dup)
+     13  A buy  ref=7      200.0000  x1      -> best 2000000
+     14  E ref=7 exec 1    -> ref7 empties   -> best 1234567 (rescan)
+     15  E ref=6 exec 3    -> ref6 has 5      -> best 1234567 (partial fill)
+     16  D ref=6           -> book empty      -> best 0
+     17  A buy  ref=8      199.9900  x12     -> best 1999900 (empty -> live again)
+    """
+    parts = [
+        add_order(1, b"B", 100, 1002000),
+        add_order(2, b"B", 50, 1502500),
+        add_order(3, b"B", 200, 1300000),
+        system_event(),
+        add_order(4, b"S", 10, 9999999),
+        order_executed(2, 50),
+        delete_order(3),
+        order_executed(1, 40),
+        delete_order(1),
+        add_order(5, b"B", 5, 1234567),
+        add_order(6, b"B", 8, 1234567),
+        delete_order(5),
+        add_order(7, b"B", 1, 2000000),
+        order_executed(7, 1),
+        order_executed(6, 3),
+        delete_order(6),
+        add_order(8, b"B", 12, 1999900),
+    ]
+    return b"".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# real ITCH 5.0 file
+# ---------------------------------------------------------------------------
+def _open(path: str):
+    if path.endswith(".gz"):
+        return gzip.open(path, "rb")
+    return open(path, "rb")
+
+
+def iter_framed(f):
+    """Yield whole messages from BinaryFILE framing (2-byte BE length prefix)."""
+    while True:
+        hdr = f.read(2)
+        if len(hdr) < 2:
+            return
+        (n,) = struct.unpack(">H", hdr)
+        msg = f.read(n)
+        if len(msg) < n:
+            return
+        yield msg
+
+
+def build_from_file(path: str, ticker: str) -> bytes:
+    want = ticker.encode().ljust(8)[:8]
+    target_locate = None
+    keep = bytearray()
+    kept = 0
+    with _open(path) as f:
+        for msg in iter_framed(f):
+            if not msg:
+                continue
+            t = msg[0]
+            if t == ord("R") and len(msg) >= 19:
+                if msg[11:19] == want:
+                    target_locate = struct.unpack(">H", msg[1:3])[0]
+                continue
+            if target_locate is None:
+                continue
+            if t in (ord("A"), ord("D"), ord("E")):
+                if struct.unpack(">H", msg[1:3])[0] == target_locate:
+                    exp = MSG_LEN[t]
+                    if len(msg) == exp:
+                        keep += msg
+                        kept += 1
+    if target_locate is None:
+        sys.exit(f"ticker {ticker!r} not found in stock directory messages")
+    print(f"ticker {ticker} -> stock_locate {target_locate}, {kept} A/D/E messages",
+          file=sys.stderr)
+    return bytes(keep)
+
+
+# ---------------------------------------------------------------------------
+TYPE_CODE = {'A': 0x41, 'D': 0x44, 'E': 0x45}
+ROM_DEPTH = 32768         # must match rom.v DEPTH used by top.v
+
+
+def write_outputs(stream: bytes, hex_path: str, bin_path: str, exp_path: str,
+                  ev_path: str) -> None:
+    for p in (hex_path, bin_path, exp_path, ev_path):
+        d = os.path.dirname(p)
+        if d:
+            os.makedirs(d, exist_ok=True)
+    if len(stream) > ROM_DEPTH:
+        sys.exit(f"feed is {len(stream)} bytes but ROM_DEPTH is {ROM_DEPTH}; "
+                 f"shorten the slice or raise ROM_DEPTH here and rom.v DEPTH")
+    with open(bin_path, "wb") as f:
+        f.write(stream)
+    # pad the $readmemh file to the ROM depth so the simulator does not warn
+    # about a short file; the feeder in top.v stops at FEED_BYTES regardless.
+    with open(hex_path, "w") as f:
+        for b in stream:
+            f.write(f"{b:02x}\n")
+        for _ in range(ROM_DEPTH - len(stream)):
+            f.write("00\n")
+    traj, final, events = replay(stream)
+    with open(exp_path, "w") as f:
+        for k, v in enumerate(traj):
+            f.write(f"{k} {v}\n")
+        f.write(f"final {final}\n")
+    # events.txt: hex type code, then decimal id / price / shares, then the
+    # expected best_bid after this event -- tb_book checks the last column.
+    with open(ev_path, "w") as f:
+        for (t, oid, price, shares), v in zip(events, traj):
+            f.write(f"{TYPE_CODE[t]:02x} {oid} {price} {shares} {v}\n")
+    # feed.vh: byte count for the ROM feeder in top.v / tb_top.v
+    vh_path = os.path.join(os.path.dirname(hex_path) or ".", "feed.vh")
+    with open(vh_path, "w") as f:
+        f.write("// generated by tools/itch_to_hex.py -- do not edit\n")
+        f.write(f"`define FEED_BYTES {len(stream)}\n")
+        f.write(f"`define FEED_FINAL_BEST {final}\n")
+    print(f"wrote {len(stream)} bytes -> {hex_path}, {bin_path}", file=sys.stderr)
+    print(f"{len(traj)} events, final best_bid = {final} -> {exp_path}, {ev_path}",
+          file=sys.stderr)
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("infile", nargs="?", help="real ITCH 5.0 file (.gz ok)")
+    ap.add_argument("--synth", action="store_true", help="emit the built-in feed")
+    ap.add_argument("--ticker", default="AAPL", help="ticker to keep (real file mode)")
+    ap.add_argument("--out-hex", default="data/feed.hex")
+    ap.add_argument("--out-bin", default="data/feed.bin")
+    ap.add_argument("--out-exp", default="data/expected.txt")
+    ap.add_argument("--out-ev", default="data/events.txt")
+    a = ap.parse_args(argv[1:])
+
+    if a.synth:
+        stream = build_synth()
+    elif a.infile:
+        stream = build_from_file(a.infile, a.ticker)
+    else:
+        ap.error("give a file or --synth")
+
+    write_outputs(stream, a.out_hex, a.out_bin, a.out_exp, a.out_ev)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))
