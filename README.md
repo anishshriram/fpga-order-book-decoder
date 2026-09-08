@@ -14,7 +14,7 @@ it is authoritative.
 | 2 | Parser (`A`/`D`/`E`) | `tb_parser` pass | runs in `top` |
 | 3 | Order book (CAM, ~4-cycle ops) | `tb_book`, `tb_book_equiv` pass | runs in `top` |
 | 4 | 7-seg display + double-dabble | `tb_display` pass | not wired |
-| 5 | ROM → parser → book → display | `tb_top`, `tb_uart` pass | **PASS** (LEDs + UART) |
+| 5 | ROM → parser → book → display | `tb_top` `tb_uart` `tb_multitop` pass | **PASS** (LEDs + UART) |
 
 On hardware `top` reports the best bid two ways with no wiring: all 6 LEDs lit
 when it equals the reference model, and an ASCII dollar value streamed over the
@@ -101,16 +101,27 @@ model), `events.txt` (decoded events + expected best bid, for `tb_book`),
 
 ## Live chart (`tools/viz.py`)
 
-`make flash-demo` builds a variant that paces the feed to ~12 messages/s, loops
-it, and after each message transmits one telemetry line — `DDDDDDDD CCC T`
-(best bid in 1/10000 $, resting order count, `A`/`D`/`E`). `tools/viz.py` reads
-that and draws a live best-bid + order-count chart (matplotlib, or a scrolling
-terminal view if it's missing).
+The `-DANIMATE` builds pace the feed to ~12 messages/s, loop it, and after each
+message transmit one telemetry line — `I DDDDDDDD CCC T` (book index, best bid
+in 1/10000 $, resting order count, `A`/`D`/`E`). `tools/viz.py` reads that and
+draws a live best-bid chart — one line per book (matplotlib, or a scrolling
+terminal view with `--terminal`).
+
+**Four books at once** (`multitop.v` — parser routes each event by stock locate
+to one of four `book_scan` instances):
+
+```
+make feed-multi ITCH=01302019.NASDAQ_ITCH50    # AMD,MSFT,AAPL,NVDA (TICKERS= to change)
+make flash-multi                               # -> SPI flash; replug
+python3 tools/viz.py                            # 4 live lines, names from data/tickers.txt
+```
+
+**One book** (`top.v` with `-DANIMATE`):
 
 ```
 make feed-real ITCH=01302019.NASDAQ_ITCH50 TICKER=MSFT
-make flash-demo          # -> SPI flash; replug the board
-python3 tools/viz.py     # add --terminal for the no-matplotlib view
+make flash-demo
+python3 tools/viz.py
 ```
 
 `make flash-perm` restores the normal full-speed one-shot build.
