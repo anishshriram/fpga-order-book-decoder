@@ -95,6 +95,22 @@ model), `events.txt` (decoded events + expected best bid, for `tb_book`),
   with `bin2bcd` and transmits `"DDDDDD.DDDD\r\n"` (dollars) on pin 69, which
   routes to the onboard FT2232 channel B — no wiring.
 
+## Live chart (`tools/viz.py`)
+
+`make flash-demo` builds a variant that paces the feed to ~12 messages/s, loops
+it, and after each message transmits one telemetry line — `DDDDDDDD CCC T`
+(best bid in 1/10000 $, resting order count, `A`/`D`/`E`). `tools/viz.py` reads
+that and draws a live best-bid + order-count chart (matplotlib, or a scrolling
+terminal view if it's missing).
+
+```
+make feed-real ITCH=01302019.NASDAQ_ITCH50 TICKER=MSFT
+make flash-demo          # -> SPI flash; replug the board
+python3 tools/viz.py     # add --terminal for the no-matplotlib view
+```
+
+`make flash-perm` restores the normal full-speed one-shot build.
+
 ## Reading it on the computer
 
 `top` must be in **SPI flash**, not SRAM — opening the serial port toggles DTR

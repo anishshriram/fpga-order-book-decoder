@@ -21,6 +21,7 @@ module tb_book;
     reg  [31:0] ev_price = 32'd0;
     reg  [31:0] ev_shares= 32'd0;
     wire [31:0] best_bid;
+    wire [15:0] order_count;
     wire        busy;
 
     integer errors = 0;
@@ -30,7 +31,7 @@ module tb_book;
         .clk(clk), .rst(rst),
         .ev_valid(ev_valid), .ev_type(ev_type), .ev_id(ev_id),
         .ev_price(ev_price), .ev_shares(ev_shares),
-        .best_bid(best_bid), .busy(busy)
+        .best_bid(best_bid), .order_count(order_count), .busy(busy)
     );
 
     always #5 clk = ~clk;

@@ -42,6 +42,7 @@ module tb_uart;
 
     readout #(.CLK_HZ(1_000_000), .TICK_HZ(2_000)) dut_ro (   // tick every 500 clk
         .clk(clk), .rst(rst), .value(ro_value),
+        .ev_stb(1'b0), .ev_type(8'h41), .order_count(16'd0),
         .uart_data(ro_data), .uart_send(ro_send), .uart_busy(ro_busy)
     );
     uart_tx #(.CLK_HZ(1_000_000), .BAUD(100_000)) ro_uart (

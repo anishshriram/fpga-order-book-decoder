@@ -28,6 +28,7 @@ module book (
     input  wire [31:0] ev_shares,    // 'A' add size / 'E' executed size
 
     output reg  [31:0] best_bid,
+    output reg  [15:0] order_count,   // live count of resting orders
     output wire        busy
 );
 
@@ -85,11 +86,12 @@ module book (
             state      <= S_IDLE;
             best_bid   <= 32'd0;
             slot_valid <= 256'd0;
-            we         <= 1'b0;
-            rd_addr    <= 8'd0;
-            scan_addr  <= 9'd0;
-            resc_addr  <= 9'd0;
-            resc_max   <= 32'd0;
+            we          <= 1'b0;
+            rd_addr     <= 8'd0;
+            scan_addr   <= 9'd0;
+            resc_addr   <= 9'd0;
+            resc_max    <= 32'd0;
+            order_count <= 16'd0;
         end else begin
             we <= 1'b0;
 
@@ -126,6 +128,7 @@ module book (
                         wr_addr <= scan_addr[7:0];
                         wr_data <= {h_id, h_price, h_shares};
                         if (h_price > best_bid) best_bid <= h_price;
+                        order_count <= order_count + 16'd1;
                         state <= S_DONE;
                     end else begin
                         scan_addr <= scan_addr + 9'd1;
@@ -136,6 +139,7 @@ module book (
                     if (slot_valid[scan_addr[7:0]] && rd_id == h_id) begin
                         if (h_type == T_DEL) begin
                             slot_valid[scan_addr[7:0]] <= 1'b0;
+                            order_count <= order_count - 16'd1;
                             if (rd_price == best_bid) begin
                                 resc_addr <= 9'd0;
                                 resc_max  <= 32'd0;
@@ -148,6 +152,7 @@ module book (
                             // T_EXE
                             if (rd_shr <= h_shares) begin
                                 slot_valid[scan_addr[7:0]] <= 1'b0;
+                                order_count <= order_count - 16'd1;
                                 if (rd_price == best_bid) begin
                                     resc_addr <= 9'd0;
                                     resc_max  <= 32'd0;

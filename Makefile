@@ -11,6 +11,8 @@
 #                    serial port being opened; required for the UART readout)
 #   make flash-loop  replay variant -> SPI flash (feeder throttled + re-runs
 #                    every ~0.5s; for a free-running logic-analyzer capture)
+#   make flash-demo  animation variant -> SPI flash (paced feed + per-message
+#                    telemetry for tools/viz.py)
 #   make flash-blink
 #   make clean
 
@@ -33,16 +35,28 @@ FAMILY := GW2A-18C
 GWDEV  := GW2A-18C
 
 # ---------------------------------------------------------------------------
-.PHONY: sim feed feed-real wave synth blink flash flash-perm flash-loop flash-blink clean \
+.PHONY: sim sim-anim feed feed-real wave synth blink flash flash-perm flash-loop flash-demo flash-blink clean \
         $(addprefix run-,$(TBS))
 
 # `make sim` always runs the deterministic synthetic feed. To exercise the
 # testbenches against a real slice instead: `make feed-real ITCH=...` then
 # `make run-tb_top` (or run-tb_book) directly -- those use whatever feed is
 # currently in data/.
-sim: feed $(addprefix run-,$(TBS))
+sim: feed $(addprefix run-,$(TBS)) sim-anim
 	@echo "-----------------------------------"
 	@echo "all testbenches passed"
+
+sim-anim: data/feed.vh | $(BUILD)          # the -DANIMATE telemetry path
+	@echo "== tb_anim (-DANIMATE) =="
+	@$(IVERILOG) -DANIMATE -s tb_anim -o $(BUILD)/tb_anim \
+	    tb_anim.v readout.v bin2bcd.v uart_tx.v
+	@$(VVP) $(BUILD)/tb_anim | tee $(BUILD)/tb_anim.log
+	@grep -q "ALL TESTS PASSED" $(BUILD)/tb_anim.log || { echo ">>> tb_anim FAILED"; exit 1; }
+	@echo "== tb_animtop (-DANIMATE -DSIMPACE) =="
+	@$(IVERILOG) -DANIMATE -DSIMPACE -s tb_animtop -o $(BUILD)/tb_animtop \
+	    tb_animtop.v $(filter-out tb_%,$(wildcard *.v))
+	@$(VVP) $(BUILD)/tb_animtop | tee $(BUILD)/tb_animtop.log
+	@grep -q "ALL TESTS PASSED" $(BUILD)/tb_animtop.log || { echo ">>> tb_animtop FAILED"; exit 1; }
 
 $(addprefix run-,$(TBS)): run-%: %.v $(SRCS) data/feed.vh | $(BUILD)
 	@echo "== $* =="
@@ -97,6 +111,11 @@ flash-perm: $(BUILD)/top.fs
 flash-loop:                       # replay variant -> SPI flash
 	rm -f $(BUILD)/top.fs $(BUILD)/top.json
 	$(MAKE) VDEFS=-DREPLAY $(BUILD)/top.fs
+	openFPGALoader -b tangnano20k -f $(BUILD)/top.fs
+	rm -f $(BUILD)/top.fs $(BUILD)/top.json
+flash-demo:                       # animation variant -> SPI flash (for tools/viz.py)
+	rm -f $(BUILD)/top.fs $(BUILD)/top.json
+	$(MAKE) VDEFS=-DANIMATE $(BUILD)/top.fs
 	openFPGALoader -b tangnano20k -f $(BUILD)/top.fs
 	rm -f $(BUILD)/top.fs $(BUILD)/top.json
 flash-blink: $(BUILD)/blink.fs

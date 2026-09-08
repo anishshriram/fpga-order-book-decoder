@@ -10,6 +10,16 @@
 `timescale 1ns/1ps
 `include "data/feed.vh"
 
+// -DREPLAY  : loop the feed, throttle bytes, for a logic-analyzer capture
+// -DANIMATE : loop the feed, pace ~12 messages/s, stream per-event telemetry
+//             (DDDDDDDD CCC T\n) for tools/viz.py
+`ifdef REPLAY
+  `define LOOPMODE
+`endif
+`ifdef ANIMATE
+  `define LOOPMODE
+`endif
+
 module top (
     input  wire       clk,      // 27 MHz
     input  wire       rst_n,    // onboard button -- NOT used (reads low on this
@@ -39,7 +49,7 @@ module top (
     localparam R_RUN = 2'd0, R_WAIT = 2'd1, R_RST = 2'd2;
     always @(posedge clk) begin
         if (rst) begin rstate <= R_RUN; pcnt <= 24'd0; end
-`ifdef REPLAY
+`ifdef LOOPMODE
         else case (rstate)
             R_RUN:  if (done) begin pcnt <= 24'd0; rstate <= R_WAIT; end
             R_WAIT: if (pcnt == 24'd10_000_000) begin pcnt <= 24'd0; rstate <= R_RST; end
@@ -80,6 +90,30 @@ module top (
     always @(posedge clk) thr <= (frst || thr >= THROTTLE) ? 16'd0 : thr + 16'd1;
     wire thr_ok = (thr >= THROTTLE);
 
+    // -DANIMATE: pace the feed to ~12 messages/s so viz.py animates smoothly.
+    // Hold the feeder for MPACE clocks after each processed message.
+    wire book_done;
+`ifdef ANIMATE
+  `ifdef SIMPACE
+    localparam [23:0] MPACE = 24'd40_000;     // fast-ish; still > 1 UART line
+  `else
+    localparam [23:0] MPACE = 24'd2_250_000;  // ~12 messages / second
+  `endif
+`else
+    localparam [23:0] MPACE = 24'd0;
+`endif
+    reg [23:0] mp;
+    reg        pacing;
+    always @(posedge clk) begin
+        if (frst) begin pacing <= 1'b0; mp <= 24'd0; end
+        else if (book_done) begin pacing <= 1'b1; mp <= 24'd0; end
+        else if (pacing) begin
+            if (mp >= MPACE) pacing <= 1'b0;
+            else             mp <= mp + 24'd1;
+        end
+    end
+    wire pace_ok = ~pacing;
+
     always @(posedge clk) begin
         if (frst) begin
             addr       <= {AW{1'b0}};
@@ -94,7 +128,7 @@ module top (
                     if (!done) fstate <= F_PRESENT;   // rom_data ready next cycle
                 end
                 F_PRESENT: begin
-                    if (!book_busy && thr_ok) begin
+                    if (!book_busy && thr_ok && pace_ok) begin
                         byte_in    <= rom_data;
                         byte_valid <= 1'b1;
                         if (addr == `FEED_BYTES - 1) done <= 1'b1;
@@ -123,13 +157,22 @@ module top (
 
     // ---- book ------------------------------------------------------
     wire [31:0] best_bid;
+    wire [15:0] order_count;
 
     book u_book (
         .clk(clk), .rst(frst),
         .ev_valid(p_ev), .ev_type(p_type), .ev_id(p_id),
         .ev_price(p_price), .ev_shares(p_shares),
-        .best_bid(best_bid), .busy(book_busy)
+        .best_bid(best_bid), .order_count(order_count), .busy(book_busy)
     );
+
+    // one pulse when the book finishes a message; latch its type for telemetry
+    reg bb_d;
+    always @(posedge clk) bb_d <= book_busy;
+    assign book_done = bb_d & ~book_busy;
+
+    reg [7:0] ev_type_l;
+    always @(posedge clk) if (p_ev) ev_type_l <= p_type;
 
     // ---- display ---------------------------------------------------
     display #(.CLK_HZ(27_000_000), .REFRESH_HZ(1000)) u_display (
@@ -153,6 +196,7 @@ module top (
 
     readout #(.CLK_HZ(27_000_000), .TICK_HZ(10)) u_readout (
         .clk(clk), .rst(rst), .value(best_bid),
+        .ev_stb(book_done), .ev_type(ev_type_l), .order_count(order_count),
         .uart_data(uart_data), .uart_send(uart_send), .uart_busy(uart_busy)
     );
 
