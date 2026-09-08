@@ -126,8 +126,24 @@ The `...0` port is the FT2232 JTAG channel; the `...1` port is the UART.
 | 7 | `best_bid[16]` | 30 | |
 
 Analyzer GND → any board GND pin. Leave the analyzer's `VCC` pin unconnected.
-Capture at 24 MHz; `byte_valid`/`event_valid` are ~MHz-scale, everything else
-slower.
+
+`byte_valid`/`event_valid` on the taps are stretched to ~1.2 us so a 24 MHz
+analyzer can see them (the real signals into parser/book are untouched).
+
+The feed runs once at power-up in ~1 ms. `make flash-loop` builds a **replay
+variant** that throttles the feeder (~150 us/byte) and re-runs it every ~0.5 s,
+so a free-running capture always catches a full pass:
+
+```
+make flash-loop     # replay build -> SPI flash; replug
+sigrok-cli --driver fx2lafw --config samplerate=4m \
+  --channels D0=byte_valid,D1=event_valid,D2=book_busy,D3=done,D4=uart_tx,D5=bb0,D6=bb8,D7=bb16 \
+  --time 600 -o cap.sr
+sigrok-cli -i cap.sr -O vcd > cap.vcd && gtkwave cap.vcd
+sigrok-cli -i cap.sr -P uart:rx=D4:baudrate=115200 -A uart=rx-data   # -> ASCII
+```
+
+`make flash-perm` puts back the normal full-speed one-shot build.
 
 ## Hardware still to do
 

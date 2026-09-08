@@ -29,6 +29,29 @@ module top (
         if (~por[3]) por <= por + 4'd1;
     wire rst = ~por[3];
 
+    // Optional replay mode (build with -DREPLAY): ~0.4 s after the feed
+    // finishes, pulse a restart so the pipeline re-runs -- handy for a
+    // free-running logic-analyzer capture. `done` still sits high >99% of the
+    // time so the LED verdict stays readable.
+    reg        done;
+    reg [1:0]  rstate;
+    reg [23:0] pcnt;
+    localparam R_RUN = 2'd0, R_WAIT = 2'd1, R_RST = 2'd2;
+    always @(posedge clk) begin
+        if (rst) begin rstate <= R_RUN; pcnt <= 24'd0; end
+`ifdef REPLAY
+        else case (rstate)
+            R_RUN:  if (done) begin pcnt <= 24'd0; rstate <= R_WAIT; end
+            R_WAIT: if (pcnt == 24'd10_000_000) begin pcnt <= 24'd0; rstate <= R_RST; end
+                    else pcnt <= pcnt + 24'd1;
+            R_RST:  if (pcnt == 24'd7) begin pcnt <= 24'd0; rstate <= R_RUN; end
+                    else pcnt <= pcnt + 24'd1;
+            default: rstate <= R_RUN;
+        endcase
+`endif
+    end
+    wire frst = rst | (rstate == R_RST);   // resets feeder / parser / book
+
     // ---- byte ROM + feeder --------------------------------------------
     localparam AW = 15;
     reg  [AW-1:0] addr;
@@ -40,14 +63,25 @@ module top (
 
     localparam F_FETCH = 1'b0, F_PRESENT = 1'b1;
     reg        fstate;
-    reg        done;
     reg  [7:0] byte_in;
     reg        byte_valid;
 
     wire       book_busy;
 
+    // In replay mode, throttle the feeder to ~1 byte / 4096 clocks (~150us) so
+    // every byte_valid / event_valid / book scan is resolvable on a slow logic
+    // analyzer. Normal build: full speed.
+`ifdef REPLAY
+    localparam [15:0] THROTTLE = 16'd4096;
+`else
+    localparam [15:0] THROTTLE = 16'd0;
+`endif
+    reg [15:0] thr;
+    always @(posedge clk) thr <= (frst || thr >= THROTTLE) ? 16'd0 : thr + 16'd1;
+    wire thr_ok = (thr >= THROTTLE);
+
     always @(posedge clk) begin
-        if (rst) begin
+        if (frst) begin
             addr       <= {AW{1'b0}};
             fstate     <= F_FETCH;
             done       <= 1'b0;
@@ -60,7 +94,7 @@ module top (
                     if (!done) fstate <= F_PRESENT;   // rom_data ready next cycle
                 end
                 F_PRESENT: begin
-                    if (!book_busy) begin
+                    if (!book_busy && thr_ok) begin
                         byte_in    <= rom_data;
                         byte_valid <= 1'b1;
                         if (addr == `FEED_BYTES - 1) done <= 1'b1;
@@ -81,7 +115,7 @@ module top (
     wire        p_is_buy;
 
     parser u_parser (
-        .clk(clk), .rst(rst),
+        .clk(clk), .rst(frst),
         .byte_in(byte_in), .byte_valid(byte_valid),
         .event_valid(p_ev), .msg_type(p_type), .order_id(p_id),
         .price(p_price), .shares(p_shares), .is_buy(p_is_buy)
@@ -91,7 +125,7 @@ module top (
     wire [31:0] best_bid;
 
     book u_book (
-        .clk(clk), .rst(rst),
+        .clk(clk), .rst(frst),
         .ev_valid(p_ev), .ev_type(p_type), .ev_id(p_id),
         .ev_price(p_price), .ev_shares(p_shares),
         .best_bid(best_bid), .busy(book_busy)
@@ -131,7 +165,17 @@ module top (
     //   dbg[0] byte_valid   dbg[1] event_valid   dbg[2] book_busy
     //   dbg[3] done          dbg[4] uart_tx (sigrok can decode it)
     //   dbg[5] best_bid[0]   dbg[6] best_bid[8]  dbg[7] best_bid[16]
+    //
+    // byte_valid and event_valid are single 37 ns pulses -- far too narrow for
+    // a 24 MHz analyzer. Stretch them to ~1.2 us on the taps only (the real
+    // signals feeding parser/book are untouched).
+    reg [4:0] s_bv, s_ev;
+    always @(posedge clk) begin
+        s_bv <= byte_valid ? 5'h1F : (s_bv != 0 ? s_bv - 5'd1 : 5'd0);
+        s_ev <= p_ev       ? 5'h1F : (s_ev != 0 ? s_ev - 5'd1 : 5'd0);
+    end
+
     assign dbg = {best_bid[16], best_bid[8], best_bid[0], uart_tx,
-                  done, book_busy, p_ev, byte_valid};
+                  done, book_busy, (s_ev != 0), (s_bv != 0)};
 
 endmodule

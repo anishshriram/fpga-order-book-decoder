@@ -9,6 +9,8 @@
 #   make flash       build/top.fs -> SRAM (fast, volatile)
 #   make flash-perm  build/top.fs -> SPI flash (survives power cycle AND the
 #                    serial port being opened; required for the UART readout)
+#   make flash-loop  replay variant -> SPI flash (feeder throttled + re-runs
+#                    every ~0.5s; for a free-running logic-analyzer capture)
 #   make flash-blink
 #   make clean
 
@@ -31,7 +33,7 @@ FAMILY := GW2A-18C
 GWDEV  := GW2A-18C
 
 # ---------------------------------------------------------------------------
-.PHONY: sim feed feed-real wave synth blink flash flash-perm flash-blink clean \
+.PHONY: sim feed feed-real wave synth blink flash flash-perm flash-loop flash-blink clean \
         $(addprefix run-,$(TBS))
 
 # `make sim` always runs the deterministic synthetic feed. To exercise the
@@ -75,8 +77,12 @@ blink: $(BUILD)/blink.fs
 
 # synth/flash bake whatever feed is in data/ into the ROM -- choose it with
 # `make feed` (synthetic) or `make feed-real ITCH=...` first.
+# DEFS: pass VDEFS=-DREPLAY to build the replay variant (feed re-runs ~every
+# 0.4s for a free-running logic-analyzer capture).
+VDEFS ?=
+
 $(BUILD)/%.fs: %.v $(RTL) tangnano20k.cst data/feed.vh | $(BUILD)
-	yosys -p "read_verilog $(if $(filter blink,$*),blink.v,$(RTL)); \
+	yosys -p "read_verilog $(VDEFS) $(if $(filter blink,$*),blink.v,$(RTL)); \
 	          synth_gowin -top $* -json $(BUILD)/$*.json"
 	nextpnr-himbaechel --json $(BUILD)/$*.json --write $(BUILD)/$*_pnr.json \
 	    --device $(DEVICE) --vopt family=$(FAMILY) --vopt cst=tangnano20k.cst \
@@ -88,6 +94,11 @@ flash: $(BUILD)/top.fs
 	openFPGALoader -b tangnano20k $<
 flash-perm: $(BUILD)/top.fs
 	openFPGALoader -b tangnano20k -f $<
+flash-loop:                       # replay variant -> SPI flash
+	rm -f $(BUILD)/top.fs $(BUILD)/top.json
+	$(MAKE) VDEFS=-DREPLAY $(BUILD)/top.fs
+	openFPGALoader -b tangnano20k -f $(BUILD)/top.fs
+	rm -f $(BUILD)/top.fs $(BUILD)/top.json
 flash-blink: $(BUILD)/blink.fs
 	openFPGALoader -b tangnano20k $<
 
