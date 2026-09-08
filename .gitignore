@@ -1,0 +1,23 @@
+# build / sim artifacts
+build/
+*.vcd
+*.json
+*.fs
+*.o
+
+# generated data feeds
+data/*.hex
+data/*.bin
+data/*.txt
+data/*.vh
+
+# toolchain (installed at ~/oss-cad-suite, never in-tree)
+oss-cad-suite/
+*.tgz
+
+# python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
