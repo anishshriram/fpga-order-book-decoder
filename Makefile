@@ -19,6 +19,11 @@
 OSS ?= $(HOME)/oss-cad-suite
 export PATH := $(OSS)/bin:$(PATH)
 
+# Call openFPGALoader by absolute path: a recursive $(MAKE) in the flash-*
+# targets can, on GNU Make 3.81, leave the parent recipe without the exported
+# PATH, so a bare `openFPGALoader` then fails with "No such file or directory".
+OFL      := $(OSS)/bin/openFPGALoader
+
 IVERILOG := iverilog -g2012 -Wall
 VVP      := vvp
 BUILD    := build
@@ -105,21 +110,21 @@ $(BUILD)/%.fs: %.v $(RTL) tangnano20k.cst data/feed.vh | $(BUILD)
 
 # ---------------------------------------------------------------------------
 flash: $(BUILD)/top.fs
-	openFPGALoader -b tangnano20k $<
+	$(OFL) -b tangnano20k $<
 flash-perm: $(BUILD)/top.fs
-	openFPGALoader -b tangnano20k -f $<
+	$(OFL) -b tangnano20k -f $<
 flash-loop:                       # replay variant -> SPI flash
 	rm -f $(BUILD)/top.fs $(BUILD)/top.json
 	$(MAKE) VDEFS=-DREPLAY $(BUILD)/top.fs
-	openFPGALoader -b tangnano20k -f $(BUILD)/top.fs
+	$(OFL) -b tangnano20k -f $(BUILD)/top.fs
 	rm -f $(BUILD)/top.fs $(BUILD)/top.json
 flash-demo:                       # animation variant -> SPI flash (for tools/viz.py)
 	rm -f $(BUILD)/top.fs $(BUILD)/top.json
 	$(MAKE) VDEFS=-DANIMATE $(BUILD)/top.fs
-	openFPGALoader -b tangnano20k -f $(BUILD)/top.fs
+	$(OFL) -b tangnano20k -f $(BUILD)/top.fs
 	rm -f $(BUILD)/top.fs $(BUILD)/top.json
 flash-blink: $(BUILD)/blink.fs
-	openFPGALoader -b tangnano20k $<
+	$(OFL) -b tangnano20k $<
 
 # ---------------------------------------------------------------------------
 $(BUILD):
