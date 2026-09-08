@@ -60,3 +60,28 @@ IO_PORT "dig[0]" IO_TYPE=LVCMOS33 DRIVE=8;
 IO_PORT "dig[1]" IO_TYPE=LVCMOS33 DRIVE=8;
 IO_PORT "dig[2]" IO_TYPE=LVCMOS33 DRIVE=8;
 IO_PORT "dig[3]" IO_TYPE=LVCMOS33 DRIVE=8;
+
+// ---- UART readout: FPGA TX -> onboard FT2232 channel B -> host ----
+// Appears on the host as the second /dev/cu.usbserial-* port. No wiring.
+IO_LOC  "uart_tx" 69;
+IO_PORT "uart_tx" IO_TYPE=LVCMOS33 DRIVE=8 PULL_MODE=UP;
+
+// ---- logic-analyzer taps on the J6 header ----
+//   dbg0 byte_valid  dbg1 event_valid  dbg2 book_busy  dbg3 done
+//   dbg4 uart_tx     dbg5 best_bid[0]  dbg6 best_bid[8] dbg7 best_bid[16]
+IO_LOC  "dbg[0]" 73;
+IO_LOC  "dbg[1]" 74;
+IO_LOC  "dbg[2]" 76;
+IO_LOC  "dbg[3]" 77;
+IO_LOC  "dbg[4]" 27;
+IO_LOC  "dbg[5]" 28;
+IO_LOC  "dbg[6]" 29;
+IO_LOC  "dbg[7]" 30;
+IO_PORT "dbg[0]" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_PORT "dbg[1]" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_PORT "dbg[2]" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_PORT "dbg[3]" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_PORT "dbg[4]" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_PORT "dbg[5]" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_PORT "dbg[6]" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_PORT "dbg[7]" IO_TYPE=LVCMOS33 DRIVE=8;

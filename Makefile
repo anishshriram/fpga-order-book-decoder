@@ -6,7 +6,9 @@
 #   make wave TB=tb_book    run one testbench with waveform dump, open GTKWave
 #   make synth    yosys -> nextpnr-himbaechel -> gowin_pack  => build/top.fs
 #   make blink    same flow for the Phase 1 LED bring-up     => build/blink.fs
-#   make flash    openFPGALoader build/top.fs   (needs the board)
+#   make flash       build/top.fs -> SRAM (fast, volatile)
+#   make flash-perm  build/top.fs -> SPI flash (survives power cycle AND the
+#                    serial port being opened; required for the UART readout)
 #   make flash-blink
 #   make clean
 
@@ -18,10 +20,10 @@ VVP      := vvp
 BUILD    := build
 
 # integration RTL (order matters only for readability; iverilog resolves refs)
-RTL := parser.v book.v bin2bcd.v display.v rom.v top.v
+RTL := parser.v book.v bin2bcd.v display.v uart_tx.v readout.v rom.v top.v
 
 # every testbench; each is compiled against all non-tb sources
-TBS  := tb_parser tb_book tb_display tb_blink tb_top
+TBS  := tb_parser tb_book tb_display tb_blink tb_uart tb_top
 SRCS := $(filter-out tb_%,$(wildcard *.v))
 
 DEVICE := GW2AR-LV18QN88C8/I7
@@ -29,7 +31,7 @@ FAMILY := GW2A-18C
 GWDEV  := GW2A-18C
 
 # ---------------------------------------------------------------------------
-.PHONY: sim feed feed-real wave synth blink flash flash-blink clean \
+.PHONY: sim feed feed-real wave synth blink flash flash-perm flash-blink clean \
         $(addprefix run-,$(TBS))
 
 # `make sim` always runs the deterministic synthetic feed. To exercise the
@@ -84,6 +86,8 @@ $(BUILD)/%.fs: %.v $(RTL) tangnano20k.cst data/feed.vh | $(BUILD)
 # ---------------------------------------------------------------------------
 flash: $(BUILD)/top.fs
 	openFPGALoader -b tangnano20k $<
+flash-perm: $(BUILD)/top.fs
+	openFPGALoader -b tangnano20k -f $<
 flash-blink: $(BUILD)/blink.fs
 	openFPGALoader -b tangnano20k $<
 

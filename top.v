@@ -16,7 +16,9 @@ module top (
                                 // board; kept only so the .cst pin still maps)
     output wire [5:0] led,      // active low
     output wire [7:0] seg,      // 7-seg cathodes {dp,g,f,e,d,c,b,a}, active low
-    output wire [3:0] dig       // 7-seg anodes, active high, one-hot
+    output wire [3:0] dig,      // 7-seg anodes, active high, one-hot
+    output wire       uart_tx,  // pin 69 -> onboard FT2232 ch B -> host serial
+    output wire [7:0] dbg       // J6 header, for the logic analyzer
 );
     wire _unused = rst_n;
 
@@ -109,5 +111,27 @@ module top (
     //      all dark     : stuck (clock / reset / config problem)
     wire match = done && (best_bid == `FEED_FINAL_BEST);
     assign led = ~{{3{done}}, {3{match}}};
+
+    // ---- UART readout: stream best_bid as ASCII dollars ------------
+    wire [7:0] uart_data;
+    wire       uart_send;
+    wire       uart_busy;
+
+    readout #(.CLK_HZ(27_000_000), .TICK_HZ(10)) u_readout (
+        .clk(clk), .rst(rst), .value(best_bid),
+        .uart_data(uart_data), .uart_send(uart_send), .uart_busy(uart_busy)
+    );
+
+    uart_tx #(.CLK_HZ(27_000_000), .BAUD(115200)) u_uart (
+        .clk(clk), .rst(rst),
+        .data(uart_data), .send(uart_send), .tx(uart_tx), .busy(uart_busy)
+    );
+
+    // ---- logic-analyzer taps (J6 header) --------------------------
+    //   dbg[0] byte_valid   dbg[1] event_valid   dbg[2] book_busy
+    //   dbg[3] done          dbg[4] uart_tx (sigrok can decode it)
+    //   dbg[5] best_bid[0]   dbg[6] best_bid[8]  dbg[7] best_bid[16]
+    assign dbg = {best_bid[16], best_bid[8], best_bid[0], uart_tx,
+                  done, book_busy, p_ev, byte_valid};
 
 endmodule

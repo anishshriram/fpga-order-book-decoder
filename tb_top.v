@@ -12,8 +12,11 @@ module tb_top;
     wire [5:0] led;
     wire [7:0] seg;
     wire [3:0] dig;
+    wire       uart_tx;
+    wire [7:0] dbg;
 
-    top dut (.clk(clk), .rst_n(rst_n), .led(led), .seg(seg), .dig(dig));
+    top dut (.clk(clk), .rst_n(rst_n), .led(led), .seg(seg), .dig(dig),
+             .uart_tx(uart_tx), .dbg(dbg));
 
     always #18 clk = ~clk;      // ~27 MHz
 
@@ -53,6 +56,14 @@ module tb_top;
         else begin
             errors = errors + 1;
             $display("FAIL  led = %b  expected 000000", led);
+        end
+
+        // debug taps: dbg[3]=done should be high, dbg[2]=book_busy low now
+        if (dbg[3] === 1'b1 && dbg[2] === 1'b0)
+            $display("PASS  dbg taps sane (done=1 busy=0)");
+        else begin
+            errors = errors + 1;
+            $display("FAIL  dbg = %b", dbg);
         end
 
         $display("----");

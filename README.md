@@ -10,11 +10,15 @@ it is authoritative.
 | Phase | What | Sim | Hardware |
 |---|---|---|---|
 | 0 | Toolchain (oss-cad-suite) | done | — |
-| 1 | LED blink bring-up | `tb_blink` pass | not flashed |
-| 2 | Parser (`A`/`D`/`E`) | `tb_parser` pass | — |
-| 3 | Order book + best bid | `tb_book` pass | — |
+| 1 | LED blink bring-up | `tb_blink` pass | **PASS** (all 6 blink) |
+| 2 | Parser (`A`/`D`/`E`) | `tb_parser` pass | runs in `top` |
+| 3 | Order book + best bid | `tb_book` pass | runs in `top` |
 | 4 | 7-seg display + double-dabble | `tb_display` pass | not wired |
-| 5 | ROM → parser → book → display | `tb_top` pass | not flashed |
+| 5 | ROM → parser → book → display | `tb_top`, `tb_uart` pass | **PASS** (LEDs + UART) |
+
+On hardware `top` reports the best bid two ways with no wiring: all 6 LEDs lit
+when it equals the reference model, and an ASCII dollar value streamed over the
+onboard USB serial (`000199.9900` for the synthetic feed).
 
 `make synth` builds `build/top.fs` with the open-source flow: ~11% LUT4, ~5% FF,
 18/46 BSRAM, Fmax ~93 MHz (clock is 27 MHz).
@@ -85,16 +89,51 @@ model), `events.txt` (decoded events + expected best bid, for `tb_book`),
   (1-cycle read). Every lookup is a linear scan sub-FSM; a delete/execute that
   removes the best price triggers a full rescan for the new maximum. Slow,
   correct.
-- **Display** shows the low 16 bits of `best_bid` in hex. `bin2bcd.v`
-  (double-dabble) is built and tested but not yet wired into `top.v` — decimal
-  dollars is a follow-on.
+- **Display** (7-seg) shows the low 16 bits of `best_bid` in hex. `bin2bcd.v`
+  (double-dabble) is built and tested but not wired into the 7-seg path.
+- **UART readout** (`readout.v` + `uart_tx.v`): ~10×/s `top` converts `best_bid`
+  with `bin2bcd` and transmits `"DDDDDD.DDDD\r\n"` (dollars) on pin 69, which
+  routes to the onboard FT2232 channel B — no wiring.
+
+## Reading it on the computer
+
+`top` must be in **SPI flash**, not SRAM — opening the serial port toggles DTR
+and wipes an SRAM config:
+
+```
+make flash-perm          # top.fs -> SPI flash
+# replug the board, then:
+python3 -c "import serial;s=serial.Serial('/dev/cu.usbserial-XXXXXXXX1',115200,timeout=2);\
+import time;time.sleep(.3);print(s.read(200).decode('ascii','replace'))"
+#   or:  screen /dev/cu.usbserial-XXXXXXXX1 115200      (exit: Ctrl-A K)
+```
+
+The `...0` port is the FT2232 JTAG channel; the `...1` port is the UART.
+
+## Logic-analyzer taps
+
+`top` drives 8 debug signals on the **J6 header** for the HiLetgo/sigrok analyzer:
+
+| CH | signal | J6 pin | note |
+|---|---|---|---|
+| 0 | `byte_valid` | 73 | one pulse per ROM byte into the parser |
+| 1 | `event_valid` | 74 | one pulse per decoded A/D/E |
+| 2 | `book_busy` | 76 | high while the book scans |
+| 3 | `done` | 77 | high once the whole feed is consumed |
+| 4 | `uart_tx` | 27 | the serial line — sigrok's UART decoder reads it |
+| 5 | `best_bid[0]` | 28 | |
+| 6 | `best_bid[8]` | 29 | |
+| 7 | `best_bid[16]` | 30 | |
+
+Analyzer GND → any board GND pin. Leave the analyzer's `VCC` pin unconnected.
+Capture at 24 MHz; `byte_valid`/`event_valid` are ~MHz-scale, everything else
+slower.
 
 ## Hardware still to do
 
-- Flash `blink.fs`, confirm a visible blink (LEDs are **active low**).
 - Wire the 5641BH to the J5 header per `tangnano20k.cst`. The common anode
   sources the sum of all lit segment currents (~48 mA) — **drive the digit
   pins through PNP / P-MOSFET high-side switches**, not straight from GW2A
   pins (rated ~8 mA, not 5 V tolerant). ~220 Ω per segment line.
-- Flash `top.fs`, confirm the displayed best bid matches the reference model's
-  final state for a real ITCH slice.
+- `make feed-real ITCH=… && make flash-perm`, confirm the UART value matches the
+  reference model for a real ITCH slice.
