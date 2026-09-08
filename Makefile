@@ -119,7 +119,7 @@ $(BUILD)/%.fs: %.v $(RTL) tangnano20k.cst data/feed.vh | $(BUILD)
 	gowin_pack -d $(GWDEV) -o $@ $(BUILD)/$*_pnr.json
 
 $(BUILD)/multitop.fs: $(MULTI_RTL) tangnano20k.cst data/feed.vh | $(BUILD)
-	yosys -p "read_verilog -DANIMATE $(MULTI_RTL); \
+	yosys -p "read_verilog -DANIMATE -DMULTI $(MULTI_RTL); \
 	          synth_gowin -top multitop -json $(BUILD)/multitop.json"
 	nextpnr-himbaechel --json $(BUILD)/multitop.json --write $(BUILD)/multitop_pnr.json \
 	    --device $(DEVICE) --vopt family=$(FAMILY) --vopt cst=tangnano20k.cst --freq 27
@@ -151,8 +151,8 @@ flash-multi:                      # 4-book multitop -> SPI flash
 # tb_multitop: needs a multi feed already in data/ (make feed-multi ITCH=...)
 sim-multi: | $(BUILD)
 	@grep -q FEED_NBOOK data/feed.vh || { echo "run: make feed-multi ITCH=<file>"; exit 1; }
-	@echo "== tb_multitop (-DANIMATE -DSIMPACE) =="
-	@$(IVERILOG) -DANIMATE -DSIMPACE -s tb_multitop -o $(BUILD)/tb_multitop \
+	@echo "== tb_multitop (-DANIMATE -DMULTI -DSIMPACE) =="
+	@$(IVERILOG) -DANIMATE -DMULTI -DSIMPACE -s tb_multitop -o $(BUILD)/tb_multitop \
 	    tb_multitop.v $(MULTI_RTL)
 	@$(VVP) $(BUILD)/tb_multitop | tee $(BUILD)/tb_multitop.log
 	@grep -q "ALL TESTS PASSED" $(BUILD)/tb_multitop.log || { echo ">>> tb_multitop FAILED"; exit 1; }

@@ -44,9 +44,15 @@ module readout #(
 
 `ifdef ANIMATE
     // ------------------------------------------------------------------
-    //  event-driven line: "I DDDDDDDD CCC T\n"   (17 bytes)
+    //  event-driven line.  -DMULTI (multitop): "I DDDDDDDD CCC T\n"
+    //  single book (default):                  "DDDDDDDD CCC T\n"
     // ------------------------------------------------------------------
-    localparam LEN = 17;
+`ifdef MULTI
+    localparam PFX = 5'd2;                     // leading "I "
+`else
+    localparam PFX = 5'd0;
+`endif
+    localparam [4:0] LEN = 5'd15 + PFX;
     localparam [2:0] S_IDLE = 0, S_CB = 1, S_CC = 2, S_SEND = 3, S_HOLD = 4;
     reg [2:0]  state;
     reg [4:0]  idx;
@@ -55,25 +61,31 @@ module readout #(
     reg [3:0]  sel_c;
 
     function [7:0] linebyte(input [4:0] i);
-        case (i)
-            5'd0:  linebyte = 8'h30 + sel_c;               // book index
-            5'd1:  linebyte = 8'h20;                       // ' '
-            5'd2:  linebyte = 8'h30 + best_dig[31:28];     // low 8 decimal digits
-            5'd3:  linebyte = 8'h30 + best_dig[27:24];
-            5'd4:  linebyte = 8'h30 + best_dig[23:20];
-            5'd5:  linebyte = 8'h30 + best_dig[19:16];
-            5'd6:  linebyte = 8'h30 + best_dig[15:12];
-            5'd7:  linebyte = 8'h30 + best_dig[11:8];
-            5'd8:  linebyte = 8'h30 + best_dig[7:4];
-            5'd9:  linebyte = 8'h30 + best_dig[3:0];
-            5'd10: linebyte = 8'h20;                       // ' '
-            5'd11: linebyte = 8'h30 + cnt_dig[11:8];
-            5'd12: linebyte = 8'h30 + cnt_dig[7:4];
-            5'd13: linebyte = 8'h30 + cnt_dig[3:0];
-            5'd14: linebyte = 8'h20;                       // ' '
-            5'd15: linebyte = type_c;
-            default: linebyte = 8'h0A;                     // '\n'
-        endcase
+        reg [4:0] j;
+        begin
+            if (PFX != 0 && i == 5'd0) linebyte = 8'h30 + sel_c;   // book index
+            else if (PFX != 0 && i == 5'd1) linebyte = 8'h20;
+            else begin
+                j = i - PFX;
+                case (j)
+                    5'd0:  linebyte = 8'h30 + best_dig[31:28];     // 8 decimal digits
+                    5'd1:  linebyte = 8'h30 + best_dig[27:24];
+                    5'd2:  linebyte = 8'h30 + best_dig[23:20];
+                    5'd3:  linebyte = 8'h30 + best_dig[19:16];
+                    5'd4:  linebyte = 8'h30 + best_dig[15:12];
+                    5'd5:  linebyte = 8'h30 + best_dig[11:8];
+                    5'd6:  linebyte = 8'h30 + best_dig[7:4];
+                    5'd7:  linebyte = 8'h30 + best_dig[3:0];
+                    5'd8:  linebyte = 8'h20;                       // ' '
+                    5'd9:  linebyte = 8'h30 + cnt_dig[11:8];
+                    5'd10: linebyte = 8'h30 + cnt_dig[7:4];
+                    5'd11: linebyte = 8'h30 + cnt_dig[3:0];
+                    5'd12: linebyte = 8'h20;                       // ' '
+                    5'd13: linebyte = type_c;
+                    default: linebyte = 8'h0A;                     // '\n'
+                endcase
+            end
+        end
     endfunction
 
     always @(posedge clk) begin

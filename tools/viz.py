@@ -59,7 +59,13 @@ def load_names():
 
 
 def parse(line: bytes):
+    """Accept both telemetry line shapes:
+         multitop : "I DDDDDDDD CCC T"   -> (book, bid, count, type)
+         single   :   "DDDDDDDD CCC T"   -> (0,    bid, count, type)
+    """
     p = line.split()
+    if len(p) == 3:
+        p = [b"0"] + p
     if len(p) != 4 or p[3] not in (b"A", b"D", b"E"):
         return None
     try:
