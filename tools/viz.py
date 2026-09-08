@@ -129,9 +129,12 @@ def run_mpl(ser, names, maxlen):
                      f"      A {tally['A']}  D {tally['D']}  E {tally['E']}")
         return lines
 
-    FuncAnimation(fig, update, interval=50, blit=False, cache_frame_data=False)
+    # keep a reference -- matplotlib garbage-collects an unassigned FuncAnimation
+    anim = FuncAnimation(fig, update, interval=50, blit=False,
+                         cache_frame_data=False)
     plt.tight_layout()
     plt.show()
+    del anim
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +198,7 @@ def main(argv):
     except serial.SerialException as e:
         sys.exit(f"{e}\n(the -DANIMATE build must be in SPI flash: `make flash-multi`, "
                  f"then replug. Close any other program holding the port.)")
-    time.sleep(0.3)
+    time.sleep(2.5)                 # board reconfigures from flash on port open
     ser.reset_input_buffer()
 
     if a.terminal:
