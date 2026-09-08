@@ -181,11 +181,21 @@ def main(argv):
     port = a.port or find_port()
     print(f"port {port} @ {a.baud}   books: {names or 'unnamed'}")
     try:
-        ser = serial.Serial(port, a.baud, timeout=0)
+        ser = serial.Serial()
+        ser.port = port
+        ser.baudrate = a.baud
+        ser.timeout = 0
+        ser.dsrdtr = False
+        ser.rtscts = False
+        ser.dtr = False        # don't pulse the FT2232 control lines on open
+        ser.rts = False
+        ser.open()
+        ser.dtr = False
+        ser.rts = False
     except serial.SerialException as e:
         sys.exit(f"{e}\n(the -DANIMATE build must be in SPI flash: `make flash-multi`, "
-                 f"then replug -- opening the port wipes an SRAM config)")
-    time.sleep(0.2)
+                 f"then replug. Close any other program holding the port.)")
+    time.sleep(0.3)
     ser.reset_input_buffer()
 
     if a.terminal:
