@@ -81,24 +81,29 @@ def run_mpl(ser, names, maxlen):
 
     nb = max(names) + 1 if names else 4
     xs = [collections.deque(maxlen=maxlen) for _ in range(nb)]
-    ys = [collections.deque(maxlen=maxlen) for _ in range(nb)]
-    last_cnt = [0] * nb
+    ys = [collections.deque(maxlen=maxlen) for _ in range(nb)]     # best bid
+    cs = [collections.deque(maxlen=maxlen) for _ in range(nb)]     # order count
     tally = {"A": 0, "D": 0, "E": 0}
     n = [0]
     buf = [b""]
 
-    fig, ax = plt.subplots(figsize=(11, 6))
-    fig.canvas.manager.set_window_title("FPGA order books")
-    lines = []
+    fig, (ax, ax2) = plt.subplots(2, 1, figsize=(11, 7), sharex=True,
+                                  height_ratios=[3, 1])
+    fig.canvas.manager.set_window_title("FPGA order book" + ("s" if nb > 1 else ""))
+    bid_lines, cnt_lines = [], []
     for i in range(nb):
         lbl = names.get(i, f"book {i}")
-        (ln,) = ax.plot([], [], drawstyle="steps-post", lw=1.7,
-                        color=COLORS[i % len(COLORS)], label=lbl)
-        lines.append(ln)
+        c = COLORS[i % len(COLORS)]
+        (bl,) = ax.plot([], [], drawstyle="steps-post", lw=1.7, color=c, label=lbl)
+        (cl,) = ax2.plot([], [], drawstyle="steps-post", lw=1.2, color=c)
+        bid_lines.append(bl); cnt_lines.append(cl)
     ax.set_ylabel("best bid ($)")
-    ax.set_xlabel("message #")
-    ax.grid(alpha=0.3)
-    ax.legend(loc="upper left")
+    ax2.set_ylabel("resting orders")
+    ax2.set_xlabel("message #")
+    for a in (ax, ax2):
+        a.grid(alpha=0.3)
+    if nb > 1:
+        ax.legend(loc="upper left")
 
     def update(_):
         buf[0] += ser.read(ser.in_waiting or 1)
@@ -112,22 +117,25 @@ def run_mpl(ser, names, maxlen):
                 continue
             n[0] += 1
             tally[t] += 1
-            xs[bi].append(n[0]); ys[bi].append(bid); last_cnt[bi] = cnt
+            xs[bi].append(n[0]); ys[bi].append(bid); cs[bi].append(cnt)
         all_x = [v for d in xs for v in d]
         if not all_x:
-            return lines
+            return bid_lines + cnt_lines
         for i in range(nb):
-            lines[i].set_data(xs[i], ys[i])
+            bid_lines[i].set_data(xs[i], ys[i])
+            cnt_lines[i].set_data(xs[i], cs[i])
         ax.set_xlim(min(all_x), max(max(all_x), min(all_x) + 1))
-        all_y = [v for d in ys for v in d]
-        lo, hi = min(all_y), max(all_y)
+        ay = [v for d in ys for v in d]
+        lo, hi = min(ay), max(ay)
         pad = (hi - lo) * 0.05 or 1
         ax.set_ylim(lo - pad, hi + pad)
-        parts = [f"{names.get(i, i)} ${ys[i][-1]:,.2f} ({last_cnt[i]})"
+        ac = [v for d in cs for v in d] or [1]
+        ax2.set_ylim(0, max(ac) * 1.15 + 1)
+        parts = [f"{names.get(i, i)} ${ys[i][-1]:,.2f} / {cs[i][-1]}"
                  for i in range(nb) if ys[i]]
         ax.set_title("   ".join(parts) +
                      f"      A {tally['A']}  D {tally['D']}  E {tally['E']}")
-        return lines
+        return bid_lines + cnt_lines
 
     # keep a reference -- matplotlib garbage-collects an unassigned FuncAnimation
     anim = FuncAnimation(fig, update, interval=50, blit=False,
