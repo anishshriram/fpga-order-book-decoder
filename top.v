@@ -157,10 +157,19 @@ module top (
     );
 
     // ---- book ------------------------------------------------------
+    // The default build uses the constant-latency CAM book (book.v). The
+    // -DANIMATE demo build uses the linear-scan book: it is paced to ~12
+    // messages/s so the extra scan latency is invisible, and the CAM book's
+    // 256-wide match is right at the 27 MHz timing edge -- adding the
+    // telemetry logic pushes it over.
     wire [31:0] best_bid;
     wire [15:0] order_count;
 
+`ifdef ANIMATE
+    book_scan u_book (
+`else
     book u_book (
+`endif
         .clk(clk), .rst(frst),
         .ev_valid(p_ev), .ev_type(p_type), .ev_id(p_id),
         .ev_price(p_price), .ev_shares(p_shares),

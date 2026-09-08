@@ -29,7 +29,7 @@ VVP      := vvp
 BUILD    := build
 
 # integration RTL (order matters only for readability; iverilog resolves refs)
-RTL       := parser.v book.v bin2bcd.v display.v uart_tx.v readout.v rom.v top.v
+RTL       := parser.v book.v book_scan.v bin2bcd.v display.v uart_tx.v readout.v rom.v top.v
 MULTI_RTL := parser.v book_scan.v bin2bcd.v uart_tx.v readout.v rom.v multitop.v
 
 # every testbench; each is compiled against all non-tb sources
