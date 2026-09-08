@@ -12,12 +12,20 @@
 
 module top (
     input  wire       clk,      // 27 MHz
-    input  wire       rst_n,    // onboard button, active low
+    input  wire       rst_n,    // onboard button -- NOT used (reads low on this
+                                // board; kept only so the .cst pin still maps)
     output wire [5:0] led,      // active low
     output wire [7:0] seg,      // 7-seg cathodes {dp,g,f,e,d,c,b,a}, active low
     output wire [3:0] dig       // 7-seg anodes, active high, one-hot
 );
-    wire rst = ~rst_n;
+    wire _unused = rst_n;
+
+    // internal power-on reset: assert for the first 16 clocks after config,
+    // then release forever. Independent of the (flaky) reset button.
+    reg [3:0] por = 4'd0;
+    always @(posedge clk)
+        if (~por[3]) por <= por + 4'd1;
+    wire rst = ~por[3];
 
     // ---- byte ROM + feeder --------------------------------------------
     localparam AW = 15;
@@ -93,6 +101,13 @@ module top (
         .value(best_bid[15:0]), .seg(seg), .an(dig)
     );
 
-    assign led = ~best_bid[5:0];
+    // ---- LED readout (active low, no wiring needed) ----------------
+    //   led[5:3] lit = ROM feed finished
+    //   led[2:0] lit = best_bid equals the reference-model value from feed.vh
+    //   => all six lit  : pipeline verified on hardware
+    //      only 5..3    : feed ran but produced the wrong best bid
+    //      all dark     : stuck (clock / reset / config problem)
+    wire match = done && (best_bid == `FEED_FINAL_BEST);
+    assign led = ~{{3{done}}, {3{match}}};
 
 endmodule

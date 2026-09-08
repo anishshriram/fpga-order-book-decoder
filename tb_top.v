@@ -47,12 +47,12 @@ module tb_top;
                      dut.best_bid, `FEED_FINAL_BEST);
         end
 
-        // LEDs mirror the low 6 bits, active low
-        if (led === ~dut.best_bid[5:0])
-            $display("PASS  led mirrors best_bid[5:0]");
+        // all six LEDs lit (active low -> 000000) = done && best_bid matches
+        if (led === 6'b000000)
+            $display("PASS  all six LEDs lit (done + match)");
         else begin
             errors = errors + 1;
-            $display("FAIL  led = %b  expected %b", led, ~dut.best_bid[5:0]);
+            $display("FAIL  led = %b  expected 000000", led);
         end
 
         $display("----");
