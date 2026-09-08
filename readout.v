@@ -25,6 +25,7 @@ module readout #(
 
     input  wire        ev_stb,       // -DANIMATE: one pulse per processed msg
     input  wire [7:0]  ev_type,      // -DANIMATE: 'A'/'D'/'E'
+    input  wire [3:0]  ev_sel,       // -DANIMATE: book index (0 for single book)
     input  wire [15:0] order_count,  // -DANIMATE: resting orders
 
     output reg  [7:0]  uart_data,
@@ -43,31 +44,34 @@ module readout #(
 
 `ifdef ANIMATE
     // ------------------------------------------------------------------
-    //  event-driven line: "DDDDDDDD CCC T\n"   (15 bytes)
+    //  event-driven line: "I DDDDDDDD CCC T\n"   (17 bytes)
     // ------------------------------------------------------------------
-    localparam LEN = 15;
+    localparam LEN = 17;
     localparam [2:0] S_IDLE = 0, S_CB = 1, S_CC = 2, S_SEND = 3, S_HOLD = 4;
     reg [2:0]  state;
-    reg [3:0]  idx;
+    reg [4:0]  idx;
     reg [39:0] best_dig, cnt_dig;
     reg [7:0]  type_c;
+    reg [3:0]  sel_c;
 
-    function [7:0] linebyte(input [3:0] i);
-        case (i)                                           // low 8 decimal digits
-            4'd0:  linebyte = 8'h30 + best_dig[31:28];
-            4'd1:  linebyte = 8'h30 + best_dig[27:24];
-            4'd2:  linebyte = 8'h30 + best_dig[23:20];
-            4'd3:  linebyte = 8'h30 + best_dig[19:16];
-            4'd4:  linebyte = 8'h30 + best_dig[15:12];
-            4'd5:  linebyte = 8'h30 + best_dig[11:8];
-            4'd6:  linebyte = 8'h30 + best_dig[7:4];
-            4'd7:  linebyte = 8'h30 + best_dig[3:0];
-            4'd8:  linebyte = 8'h20;                       // ' '
-            4'd9:  linebyte = 8'h30 + cnt_dig[11:8];
-            4'd10: linebyte = 8'h30 + cnt_dig[7:4];
-            4'd11: linebyte = 8'h30 + cnt_dig[3:0];
-            4'd12: linebyte = 8'h20;                       // ' '
-            4'd13: linebyte = type_c;
+    function [7:0] linebyte(input [4:0] i);
+        case (i)
+            5'd0:  linebyte = 8'h30 + sel_c;               // book index
+            5'd1:  linebyte = 8'h20;                       // ' '
+            5'd2:  linebyte = 8'h30 + best_dig[31:28];     // low 8 decimal digits
+            5'd3:  linebyte = 8'h30 + best_dig[27:24];
+            5'd4:  linebyte = 8'h30 + best_dig[23:20];
+            5'd5:  linebyte = 8'h30 + best_dig[19:16];
+            5'd6:  linebyte = 8'h30 + best_dig[15:12];
+            5'd7:  linebyte = 8'h30 + best_dig[11:8];
+            5'd8:  linebyte = 8'h30 + best_dig[7:4];
+            5'd9:  linebyte = 8'h30 + best_dig[3:0];
+            5'd10: linebyte = 8'h20;                       // ' '
+            5'd11: linebyte = 8'h30 + cnt_dig[11:8];
+            5'd12: linebyte = 8'h30 + cnt_dig[7:4];
+            5'd13: linebyte = 8'h30 + cnt_dig[3:0];
+            5'd14: linebyte = 8'h20;                       // ' '
+            5'd15: linebyte = type_c;
             default: linebyte = 8'h0A;                     // '\n'
         endcase
     endfunction
@@ -75,7 +79,7 @@ module readout #(
     always @(posedge clk) begin
         if (rst) begin
             state <= S_IDLE; bcd_start <= 1'b0;
-            uart_send <= 1'b0; uart_data <= 8'd0; idx <= 4'd0;
+            uart_send <= 1'b0; uart_data <= 8'd0; idx <= 5'd0;
         end else begin
             bcd_start <= 1'b0;
             uart_send <= 1'b0;
@@ -83,6 +87,7 @@ module readout #(
                 S_IDLE: if (ev_stb) begin
                     val       <= value;
                     type_c    <= ev_type;
+                    sel_c     <= ev_sel;
                     bcd_start <= 1'b1;
                     state     <= S_CB;
                 end
@@ -94,7 +99,7 @@ module readout #(
                 end
                 S_CC: if (bcd_done) begin
                     cnt_dig <= bcd;
-                    idx     <= 4'd0;
+                    idx     <= 5'd0;
                     state   <= S_SEND;
                 end
                 S_SEND: if (!uart_busy) begin
@@ -104,7 +109,7 @@ module readout #(
                 end
                 S_HOLD: begin
                     if (idx == LEN - 1) state <= S_IDLE;
-                    else begin idx <= idx + 4'd1; state <= S_SEND; end
+                    else begin idx <= idx + 5'd1; state <= S_SEND; end
                 end
                 default: state <= S_IDLE;
             endcase

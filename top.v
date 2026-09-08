@@ -152,7 +152,8 @@ module top (
         .clk(clk), .rst(frst),
         .byte_in(byte_in), .byte_valid(byte_valid),
         .event_valid(p_ev), .msg_type(p_type), .order_id(p_id),
-        .price(p_price), .shares(p_shares), .is_buy(p_is_buy)
+        .price(p_price), .shares(p_shares), .is_buy(p_is_buy),
+        .stock_locate()
     );
 
     // ---- book ------------------------------------------------------
@@ -196,7 +197,8 @@ module top (
 
     readout #(.CLK_HZ(27_000_000), .TICK_HZ(10)) u_readout (
         .clk(clk), .rst(rst), .value(best_bid),
-        .ev_stb(book_done), .ev_type(ev_type_l), .order_count(order_count),
+        .ev_stb(book_done), .ev_type(ev_type_l), .ev_sel(4'd0),
+        .order_count(order_count),
         .uart_data(uart_data), .uart_send(uart_send), .uart_busy(uart_busy)
     );
 

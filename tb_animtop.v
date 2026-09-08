@@ -30,9 +30,13 @@ module tb_animtop;
     endtask
 
     reg [7:0] c;
-    integer f, best, cnt, li;
+    integer f, best, cnt, li, sel;
     task get_line;
         begin
+            uart_byte(c);                         // book index (0 for single top)
+            if (c < 8'h30 || c > 8'h39) errors = errors + 1;
+            sel = c - 8'h30;
+            uart_byte(c); if (c !== 8'h20) errors = errors + 1;
             best = 0;
             for (f = 0; f < 8; f = f + 1) begin
                 uart_byte(c);

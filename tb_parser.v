@@ -17,6 +17,7 @@ module tb_parser;
     wire [31:0] price;
     wire [31:0] shares;
     wire        is_buy;
+    wire [15:0] stock_locate;
 
     integer errors = 0;
     integer checks = 0;
@@ -25,7 +26,8 @@ module tb_parser;
         .clk(clk), .rst(rst),
         .byte_in(byte_in), .byte_valid(byte_valid),
         .event_valid(event_valid), .msg_type(msg_type),
-        .order_id(order_id), .price(price), .shares(shares), .is_buy(is_buy)
+        .order_id(order_id), .price(price), .shares(shares), .is_buy(is_buy),
+        .stock_locate(stock_locate)
     );
 
     always #5 clk = ~clk;
@@ -136,6 +138,7 @@ module tb_parser;
         chk("A: price == 1502500",     ev_price == 32'd1502500);
         chk("A: shares == 100",        ev_shares== 32'd100);
         chk("A: is_buy == 1",          ev_is_buy== 1'b1);
+        chk("A: stock_locate == 1",    stock_locate == 16'd1);
 
         // 2) Delete Order: oref low16 = 0xABCD
         send_delete(64'h0000_0000_00FF_ABCD);

@@ -25,7 +25,8 @@ module parser (
     output reg  [15:0] order_id,
     output reg  [31:0] price,          // valid for 'A' only
     output reg  [31:0] shares,         // valid for 'A' and 'E'
-    output reg         is_buy          // valid for 'A' only
+    output reg         is_buy,         // valid for 'A' only
+    output reg  [15:0] stock_locate    // offset 1-2, all types; for multi-book routing
 );
 
     // ITCH 5.0 message lengths, offsets from start of message, no length prefix.
@@ -83,21 +84,25 @@ module parser (
             order_id    <= 16'd0;
             price       <= 32'd0;
             shares      <= 32'd0;
-            is_buy      <= 1'b0;
-            offs        <= 7'd0;
-            cur_len     <= 7'd1;
-            cur_type    <= 8'd0;
-            drop        <= 1'b0;
+            is_buy       <= 1'b0;
+            stock_locate <= 16'd0;
+            offs         <= 7'd0;
+            cur_len      <= 7'd1;
+            cur_type     <= 8'd0;
+            drop         <= 1'b0;
         end else begin
             event_valid <= 1'b0;
 
             if (byte_valid) begin
                 if (offs == 7'd0) begin
                     // message type byte
-                    cur_type <= byte_in;
-                    cur_len  <= msg_len(byte_in);
-                    drop     <= 1'b0;
+                    cur_type     <= byte_in;
+                    cur_len      <= msg_len(byte_in);
+                    drop         <= 1'b0;
+                    stock_locate <= 16'd0;
                 end else begin
+                    if (offs == 7'd1 || offs == 7'd2)
+                        stock_locate <= {stock_locate[7:0], byte_in};
                     case (cur_type)
                         // ---- Add Order ------------------------------------
                         T_ADD: begin

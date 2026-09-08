@@ -29,7 +29,8 @@ VVP      := vvp
 BUILD    := build
 
 # integration RTL (order matters only for readability; iverilog resolves refs)
-RTL := parser.v book.v bin2bcd.v display.v uart_tx.v readout.v rom.v top.v
+RTL       := parser.v book.v bin2bcd.v display.v uart_tx.v readout.v rom.v top.v
+MULTI_RTL := parser.v book_scan.v bin2bcd.v uart_tx.v readout.v rom.v multitop.v
 
 # every testbench; each is compiled against all non-tb sources
 TBS  := tb_parser tb_book tb_book_equiv tb_display tb_blink tb_uart tb_top
@@ -40,7 +41,8 @@ FAMILY := GW2A-18C
 GWDEV  := GW2A-18C
 
 # ---------------------------------------------------------------------------
-.PHONY: sim sim-anim feed feed-real wave synth blink flash flash-perm flash-loop flash-demo flash-blink clean \
+.PHONY: sim sim-anim sim-multi feed feed-real feed-multi wave synth blink \
+        flash flash-perm flash-loop flash-demo flash-multi flash-blink clean \
         $(addprefix run-,$(TBS))
 
 # `make sim` always runs the deterministic synthetic feed. To exercise the
@@ -83,6 +85,14 @@ feed-real: | $(BUILD)
 	python3 tools/itch_to_hex.py "$(ITCH)" \
 	    --ticker "$(or $(TICKER),AAPL)" --limit "$(or $(LIMIT),800)"
 
+# 4-ticker interleaved feed for multitop / tools/viz.py
+# ITCH=<file> [TICKERS=AMD,MSFT,AAPL,NVDA] [LIMIT=400]
+TICKERS   ?= AMD,MSFT,AAPL,NVDA
+MULTILIMIT ?= 400
+feed-multi: | $(BUILD)
+	@test -n "$(ITCH)" || { echo "usage: make feed-multi ITCH=<file> [TICKERS=A,B,C,D] [MULTILIMIT=400]"; exit 1; }
+	python3 tools/itch_to_hex.py "$(ITCH)" --tickers "$(TICKERS)" --limit "$(MULTILIMIT)"
+
 # ---------------------------------------------------------------------------
 wave: data/feed.vh | $(BUILD)
 	@test -n "$(TB)" || { echo "usage: make wave TB=tb_book"; exit 1; }
@@ -108,6 +118,13 @@ $(BUILD)/%.fs: %.v $(RTL) tangnano20k.cst data/feed.vh | $(BUILD)
 	    --freq 27
 	gowin_pack -d $(GWDEV) -o $@ $(BUILD)/$*_pnr.json
 
+$(BUILD)/multitop.fs: $(MULTI_RTL) tangnano20k.cst data/feed.vh | $(BUILD)
+	yosys -p "read_verilog -DANIMATE $(MULTI_RTL); \
+	          synth_gowin -top multitop -json $(BUILD)/multitop.json"
+	nextpnr-himbaechel --json $(BUILD)/multitop.json --write $(BUILD)/multitop_pnr.json \
+	    --device $(DEVICE) --vopt family=$(FAMILY) --vopt cst=tangnano20k.cst --freq 27
+	gowin_pack -d $(GWDEV) -o $@ $(BUILD)/multitop_pnr.json
+
 # ---------------------------------------------------------------------------
 flash: $(BUILD)/top.fs
 	$(OFL) -b tangnano20k $<
@@ -125,6 +142,20 @@ flash-demo:                       # animation variant -> SPI flash (for tools/vi
 	rm -f $(BUILD)/top.fs $(BUILD)/top.json
 flash-blink: $(BUILD)/blink.fs
 	$(OFL) -b tangnano20k $<
+flash-multi:                      # 4-book multitop -> SPI flash
+	rm -f $(BUILD)/multitop.fs $(BUILD)/multitop.json
+	$(MAKE) $(BUILD)/multitop.fs
+	$(OFL) -b tangnano20k -f $(BUILD)/multitop.fs
+	rm -f $(BUILD)/multitop.fs $(BUILD)/multitop.json
+
+# tb_multitop: needs a multi feed already in data/ (make feed-multi ITCH=...)
+sim-multi: | $(BUILD)
+	@grep -q FEED_NBOOK data/feed.vh || { echo "run: make feed-multi ITCH=<file>"; exit 1; }
+	@echo "== tb_multitop (-DANIMATE -DSIMPACE) =="
+	@$(IVERILOG) -DANIMATE -DSIMPACE -s tb_multitop -o $(BUILD)/tb_multitop \
+	    tb_multitop.v $(MULTI_RTL)
+	@$(VVP) $(BUILD)/tb_multitop | tee $(BUILD)/tb_multitop.log
+	@grep -q "ALL TESTS PASSED" $(BUILD)/tb_multitop.log || { echo ">>> tb_multitop FAILED"; exit 1; }
 
 # ---------------------------------------------------------------------------
 $(BUILD):

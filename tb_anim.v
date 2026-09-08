@@ -17,6 +17,7 @@ module tb_anim;
     reg  [31:0] value    = 32'd0;
     reg  [15:0] ocount   = 16'd0;
     reg  [7:0]  etype    = 8'h41;
+    reg  [3:0]  esel     = 4'd0;
     reg         ev_stb   = 1'b0;
     wire [7:0]  ud;
     wire        us;
@@ -25,7 +26,7 @@ module tb_anim;
 
     readout #(.CLK_HZ(1_000_000)) dut (
         .clk(clk), .rst(rst), .value(value),
-        .ev_stb(ev_stb), .ev_type(etype), .order_count(ocount),
+        .ev_stb(ev_stb), .ev_type(etype), .ev_sel(esel), .order_count(ocount),
         .uart_data(ud), .uart_send(us), .uart_busy(ubusy)
     );
     uart_tx #(.CLK_HZ(1_000_000), .BAUD(100_000)) u (
@@ -41,20 +42,20 @@ module tb_anim;
         end
     endtask
 
-    reg [8*20:1] got;
+    reg [8*24:1] got;
     reg [7:0]    c;
     integer      j;
 
     task expect_line(input [31:0] v, input [15:0] oc, input [7:0] t,
-                     input [8*16:1] want);
+                     input [3:0] sel, input [8*20:1] want);
         begin
             @(negedge clk);
-            value = v; ocount = oc; etype = t; ev_stb = 1'b1;
+            value = v; ocount = oc; etype = t; esel = sel; ev_stb = 1'b1;
             @(negedge clk); ev_stb = 1'b0;
             got = 0;
-            for (j = 0; j < 15; j = j + 1) begin
+            for (j = 0; j < 17; j = j + 1) begin
                 rx(c);
-                if (j < 14) got = (got << 8) | c;
+                if (j < 16) got = (got << 8) | c;
             end
             $display("      line = '%s'  (last byte %02h)", got, c);
             if (got === want && c === 8'h0A) $display("PASS  %0s", want);
@@ -67,10 +68,10 @@ module tb_anim;
         rst = 1'b0;
         repeat (2) @(negedge clk);
 
-        //            value      count  type       expected "DDDDDDDD CCC T"
-        expect_line(32'd1625500, 16'd47,  8'h41, "01625500 047 A");
-        expect_line(32'd0,       16'd0,   8'h44, "00000000 000 D");
-        expect_line(32'd99999999,16'd256, 8'h45, "99999999 256 E");
+        //            value      count  type   sel    expected "I DDDDDDDD CCC T"
+        expect_line(32'd1625500, 16'd47,  8'h41, 4'd2, "2 01625500 047 A");
+        expect_line(32'd0,       16'd0,   8'h44, 4'd0, "0 00000000 000 D");
+        expect_line(32'd99999999,16'd256, 8'h45, 4'd3, "3 99999999 256 E");
 
         $display("----");
         if (errors == 0) $display("ALL TESTS PASSED");
