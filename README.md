@@ -20,8 +20,8 @@ On hardware `top` reports the best bid two ways with no wiring: all 6 LEDs lit
 when it equals the reference model, and an ASCII dollar value streamed over the
 onboard USB serial (`000199.9900` for the synthetic feed).
 
-`make synth` builds `build/top.fs` with the open-source flow: ~11% LUT4, ~5% FF,
-18/46 BSRAM, Fmax ~93 MHz (clock is 27 MHz).
+`make synth` builds `build/top.fs` with the open-source flow: 45% LUT4, 33% FF,
+17/46 BSRAM (the CAM book dominates), closes timing at the 27 MHz clock.
 
 ## Toolchain
 
