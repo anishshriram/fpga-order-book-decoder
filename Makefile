@@ -141,8 +141,10 @@ flash-demo:                       # animation variant -> SPI flash (for tools/vi
 	$(OFL) -b tangnano20k -f $(BUILD)/top.fs
 	rm -f $(BUILD)/top.fs $(BUILD)/top.json
 flash-demo2:                      # animation + 2 CL5641BH (name/price) -> SPI flash
+                                  #   DIRECT=1 : no transistors, digit pins drive
+                                  #   the anodes (active-high) via a series resistor
 	rm -f $(BUILD)/top.fs $(BUILD)/top.json
-	$(MAKE) VDEFS="-DANIMATE -DSSEG2" $(BUILD)/top.fs
+	$(MAKE) VDEFS="-DANIMATE -DSSEG2 $(if $(DIRECT),-DDIRECT,)" $(BUILD)/top.fs
 	$(OFL) -b tangnano20k -f $(BUILD)/top.fs
 	rm -f $(BUILD)/top.fs $(BUILD)/top.json
 flash-demo3:                      # animation + 3 CL5641BH displays -> SPI flash

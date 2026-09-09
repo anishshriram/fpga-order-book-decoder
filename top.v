@@ -214,10 +214,17 @@ module top (
         .name(`FEED_NAME), .best_bid(best_bid), .order_count(order_count),
         .patt(disp_patt)
     );
-  `ifdef SSEG2
-    sseg12 #(.CLK_HZ(27_000_000), .NDIG(8)) u_sseg (
+    // -DDIRECT : no transistors -- digit pin drives the anode straight (with a
+    // series resistor); digit-select becomes active-high.
+  `ifdef DIRECT
+    localparam SSEG_ACTLOW = 0;
   `else
-    sseg12 #(.CLK_HZ(27_000_000), .NDIG(12)) u_sseg (
+    localparam SSEG_ACTLOW = 1;
+  `endif
+  `ifdef SSEG2
+    sseg12 #(.CLK_HZ(27_000_000), .NDIG(8), .ACTLOW(SSEG_ACTLOW)) u_sseg (
+  `else
+    sseg12 #(.CLK_HZ(27_000_000), .NDIG(12), .ACTLOW(SSEG_ACTLOW)) u_sseg (
   `endif
         .clk(clk), .rst(rst), .patt(disp_patt), .seg(seg), .dig(dig)
     );

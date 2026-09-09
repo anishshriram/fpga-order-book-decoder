@@ -14,7 +14,9 @@
 
 module sseg12 #(
     parameter CLK_HZ = 27_000_000,
-    parameter NDIG   = 12               // 12 = three displays, 8 = two
+    parameter NDIG   = 12,              // 12 = three displays, 8 = two
+    parameter ACTLOW = 1               // 1 = PNP high-side (low-active digit),
+                                        // 0 = digit pin drives the anode directly
 ) (
     input  wire            clk,
     input  wire            rst,
@@ -51,7 +53,8 @@ module sseg12 #(
             4'd8:  p = patt[71:64];    4'd9:  p = patt[79:72];
             4'd10: p = patt[87:80];    default: p = patt[95:88];
         endcase
-        seg = ~p;                                       // common anode
-        dig = ~({{(NDIG-1){1'b0}}, 1'b1} << idx);        // active-low one-cold
+        seg = ~p;                                       // common anode: 0 = lit
+        dig = ({{(NDIG-1){1'b0}}, 1'b1} << idx)          // one-hot for this digit
+              ^ {NDIG{(ACTLOW != 0)}};                   // ACTLOW -> invert to one-cold
     end
 endmodule
