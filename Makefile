@@ -42,8 +42,8 @@ GWDEV  := GW2A-18C
 
 # ---------------------------------------------------------------------------
 .PHONY: sim sim-anim sim-multi feed feed-real feed-multi wave synth blink \
-        flash flash-perm flash-loop flash-demo flash-demo3 flash-multi \
-        flash-blink clean $(addprefix run-,$(TBS))
+        flash flash-perm flash-loop flash-demo flash-demo2 flash-demo3 \
+        flash-multi flash-blink clean $(addprefix run-,$(TBS))
 
 # `make sim` always runs the deterministic synthetic feed. To exercise the
 # testbenches against a real slice instead: `make feed-real ITCH=...` then
@@ -138,6 +138,11 @@ flash-loop:                       # replay variant -> SPI flash
 flash-demo:                       # animation variant -> SPI flash (for tools/viz.py)
 	rm -f $(BUILD)/top.fs $(BUILD)/top.json
 	$(MAKE) VDEFS=-DANIMATE $(BUILD)/top.fs
+	$(OFL) -b tangnano20k -f $(BUILD)/top.fs
+	rm -f $(BUILD)/top.fs $(BUILD)/top.json
+flash-demo2:                      # animation + 2 CL5641BH (name/price) -> SPI flash
+	rm -f $(BUILD)/top.fs $(BUILD)/top.json
+	$(MAKE) VDEFS="-DANIMATE -DSSEG2" $(BUILD)/top.fs
 	$(OFL) -b tangnano20k -f $(BUILD)/top.fs
 	rm -f $(BUILD)/top.fs $(BUILD)/top.json
 flash-demo3:                      # animation + 3 CL5641BH displays -> SPI flash

@@ -13,15 +13,16 @@
 `timescale 1ns/1ps
 
 module sseg12 #(
-    parameter CLK_HZ = 27_000_000
+    parameter CLK_HZ = 27_000_000,
+    parameter NDIG   = 12               // 12 = three displays, 8 = two
 ) (
-    input  wire        clk,
-    input  wire        rst,
-    input  wire [95:0] patt,
-    output reg  [7:0]  seg,
-    output reg  [11:0] dig
+    input  wire            clk,
+    input  wire            rst,
+    input  wire [95:0]     patt,
+    output reg  [7:0]      seg,
+    output reg  [NDIG-1:0] dig
 );
-    localparam integer DIV = CLK_HZ / (1000 * 12);      // ~1 kHz per digit
+    localparam integer DIV = CLK_HZ / (1000 * NDIG);    // ~1 kHz per digit
     localparam integer DW  = (DIV <= 2) ? 1 : $clog2(DIV);
     localparam [DW-1:0] DIVM = DIV[DW-1:0] - 1'b1;
 
@@ -34,7 +35,7 @@ module sseg12 #(
             idx <= 4'd0;
         end else if (dv == DIVM) begin
             dv  <= {DW{1'b0}};
-            idx <= (idx == 4'd11) ? 4'd0 : idx + 4'd1;
+            idx <= (idx == NDIG - 1) ? 4'd0 : idx + 4'd1;
         end else begin
             dv <= dv + 1'b1;
         end
@@ -50,7 +51,7 @@ module sseg12 #(
             4'd8:  p = patt[71:64];    4'd9:  p = patt[79:72];
             4'd10: p = patt[87:80];    default: p = patt[95:88];
         endcase
-        seg = ~p;                              // common anode
-        dig = ~(12'd1 << idx);                 // active-low one-cold
+        seg = ~p;                                       // common anode
+        dig = ~({{(NDIG-1){1'b0}}, 1'b1} << idx);        // active-low one-cold
     end
 endmodule

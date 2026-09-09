@@ -19,6 +19,12 @@
 `ifdef ANIMATE
   `define LOOPMODE
 `endif
+`ifdef SSEG2
+  `define SSEG_ANY
+`endif
+`ifdef SSEG3
+  `define SSEG_ANY
+`endif
 
 module top (
     input  wire       clk,      // 27 MHz
@@ -28,11 +34,13 @@ module top (
     output wire [7:0] seg,      // 7-seg cathodes {dp,g,f,e,d,c,b,a}, active low
 `ifdef SSEG3
     output wire [11:0] dig,     // 3x CL5641BH digit-selects, active-low (PNP)
+`elsif SSEG2
+    output wire [7:0]  dig,     // 2x CL5641BH digit-selects, active-low (PNP)
 `else
-    output wire [3:0] dig,      // 7-seg anodes, active high, one-hot
+    output wire [3:0]  dig,     // 7-seg anodes, active high, one-hot
 `endif
     output wire       uart_tx   // pin 69 -> onboard FT2232 ch B -> host serial
-`ifndef SSEG3
+`ifndef SSEG_ANY
   , output wire [7:0] dbg       // J6 header, for the logic analyzer
 `endif
 );
@@ -191,15 +199,26 @@ module top (
     always @(posedge clk) if (p_ev) ev_type_l <= p_type;
 
     // ---- display ---------------------------------------------------
+    // -DSSEG3 : three CL5641BH  (name / price / order count),  dig[11:0]
+    // -DSSEG2 : two   CL5641BH  (name / price),                dig[7:0] used
+`ifdef SSEG2
+  `define SSEG_ANY
+`endif
 `ifdef SSEG3
-    // three CL5641BH: ticker name / price / resting-order count
+  `define SSEG_ANY
+`endif
+`ifdef SSEG_ANY
     wire [95:0] disp_patt;
     disp3 u_disp3 (
         .clk(clk), .rst(rst),
         .name(`FEED_NAME), .best_bid(best_bid), .order_count(order_count),
         .patt(disp_patt)
     );
-    sseg12 #(.CLK_HZ(27_000_000)) u_sseg (
+  `ifdef SSEG2
+    sseg12 #(.CLK_HZ(27_000_000), .NDIG(8)) u_sseg (
+  `else
+    sseg12 #(.CLK_HZ(27_000_000), .NDIG(12)) u_sseg (
+  `endif
         .clk(clk), .rst(rst), .patt(disp_patt), .seg(seg), .dig(dig)
     );
 `else
@@ -249,7 +268,7 @@ module top (
         s_ev <= p_ev       ? 5'h1F : (s_ev != 0 ? s_ev - 5'd1 : 5'd0);
     end
 
-`ifndef SSEG3
+`ifndef SSEG_ANY
     assign dbg = {best_bid[16], best_bid[8], best_bid[0], uart_tx,
                   done, book_busy, (s_ev != 0), (s_bv != 0)};
 `endif
