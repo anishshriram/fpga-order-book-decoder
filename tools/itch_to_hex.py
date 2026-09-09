@@ -146,14 +146,18 @@ def _open(path: str):
 
 
 def build_from_file(path: str, ticker: str, limit: int | None,
-                    chunk: int = 1 << 24) -> bytes:
+                    from_sec: float = 0.0, chunk: int = 1 << 24) -> bytes:
     """Scan a BinaryFILE-framed ITCH 5.0 stream (2-byte BE length prefix).
 
     Reads the type byte and stock-locate from fixed offsets without copying
     every message -- only messages we actually keep are materialized. Stops as
-    soon as `limit` kept messages are reached (for a liquid ticker that is
-    early in the file)."""
+    soon as `limit` kept messages are reached.
+
+    from_sec: skip A/D/E messages whose timestamp (ns since midnight, offset 5,
+    6 bytes) is before this many seconds. 0 = start of file (pre-market, thin);
+    34200 = 09:30:00 regular-hours open (dense, volatile)."""
     want = ticker.encode().ljust(8)[:8]
+    from_ns = int(from_sec * 1_000_000_000)
     A, D, E, R = ord("A"), ord("D"), ord("E"), ord("R")
     keep_types = frozenset((A, D, E))
     target_locate = None
@@ -193,8 +197,9 @@ def build_from_file(path: str, ticker: str, limit: int | None,
                 if n >= 18 and bytes(buf[pos + 13:pos + 21]) == want:
                     target_locate = (buf[pos + 3] << 8) | buf[pos + 4]
             elif target_locate is not None and t in keep_types:
+                ts = int.from_bytes(buf[pos + 7:pos + 13], "big")   # msg offset 5
                 if ((buf[pos + 3] << 8) | buf[pos + 4]) == target_locate \
-                        and n == MSG_LEN[t]:
+                        and n == MSG_LEN[t] and ts >= from_ns:
                     keep += buf[pos + 2:end]
                     kept += 1
                     if (limit is not None and kept >= limit) \
@@ -372,6 +377,11 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--ticker", default="AAPL", help="ticker to keep (real file mode)")
     ap.add_argument("--tickers", help="comma list, e.g. AMD,MSFT,AAPL,NVDA -- one "
                     "interleaved feed, locate rewritten to book index 0..N-1")
+    ap.add_argument("--from-sec", type=float, default=0.0,
+                    help="skip messages before this second-of-day "
+                         "(34200 = 09:30 regular-hours open; default 0 = pre-market)")
+    ap.add_argument("--open", dest="from_sec", action="store_const", const=34200.0,
+                    help="shorthand for --from-sec 34200")
     ap.add_argument("--limit", type=int, default=800,
                     help="max A/D/E messages to keep from a real file "
                          "(must fit ROM_DEPTH=%d bytes; default 800)" % ROM_DEPTH)
@@ -393,7 +403,7 @@ def main(argv: list[str]) -> int:
         stream = build_synth()
         name = "SYNTH"
     elif a.infile:
-        stream = build_from_file(a.infile, a.ticker, a.limit)
+        stream = build_from_file(a.infile, a.ticker, a.limit, a.from_sec)
         name = a.ticker.upper()
     else:
         ap.error("give a file or --synth")

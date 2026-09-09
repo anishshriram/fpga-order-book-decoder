@@ -79,11 +79,12 @@ feed: | $(BUILD)                        # always regenerate the synthetic feed
 data/feed.vh: | $(BUILD)                # bootstrap a feed only if none exists
 	python3 tools/itch_to_hex.py --synth
 
-# real slice: ITCH=<file> [TICKER=AAPL] [LIMIT=800]
+# real slice: ITCH=<file> [TICKER=AAPL] [LIMIT=800] [FROMSEC=34200 for the 09:30 open]
 feed-real: | $(BUILD)
-	@test -n "$(ITCH)" || { echo "usage: make feed-real ITCH=<file> [TICKER=AAPL] [LIMIT=800]"; exit 1; }
+	@test -n "$(ITCH)" || { echo "usage: make feed-real ITCH=<file> [TICKER=AAPL] [LIMIT=800] [FROMSEC=34200]"; exit 1; }
 	python3 tools/itch_to_hex.py "$(ITCH)" \
-	    --ticker "$(or $(TICKER),AAPL)" --limit "$(or $(LIMIT),800)"
+	    --ticker "$(or $(TICKER),AAPL)" --limit "$(or $(LIMIT),800)" \
+	    --from-sec "$(or $(FROMSEC),0)"
 
 # 4-ticker interleaved feed for multitop / tools/viz.py
 # ITCH=<file> [TICKERS=AMD,MSFT,AAPL,NVDA] [LIMIT=400]
